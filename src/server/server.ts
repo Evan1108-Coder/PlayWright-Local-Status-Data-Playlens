@@ -1,7 +1,7 @@
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import { fileURLToPath } from "node:url";
 import type { ApiErrorBody, ExportFormat, HealthResponse, SessionsResponse, StateResponse, StateSaveResponse } from "./apiTypes";
-import { createInitialAppState, type PlayLensState } from "../state/appState";
+import { createEmptyAppState, createInitialAppState, type PlayLensState } from "../state/appState";
 import {
   appendSessionEvent,
   createSession,
@@ -74,6 +74,34 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/ai/complete") {
+        const apiKey = process.env.MINIMAX_API_KEY?.trim();
+        if (!apiKey) {
+          sendError(response, 503, "ai_unavailable", "MiniMax API key is not configured on the server. Set MINIMAX_API_KEY to enable AI.");
+          return;
+        }
+        const body = await readJsonBody<{ messages: Array<{ role: string; content: string }>; temperature?: number; maxTokens?: number }>(request);
+        const model = process.env.MINIMAX_MODEL ?? "minimax-text-01";
+        const baseUrl = (process.env.MINIMAX_BASE_URL ?? "https://api.minimax.io/v1").replace(/\/$/, "");
+        const upstream = await fetch(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify({ model, messages: body.messages, temperature: body.temperature ?? 0.2, max_tokens: body.maxTokens ?? 1200 }),
+        });
+        if (!upstream.ok) {
+          const detail = await upstream.text().catch(() => "");
+          sendError(response, upstream.status, "ai_error", `MiniMax: ${upstream.status}${detail ? ` - ${detail.slice(0, 240)}` : ""}`);
+          return;
+        }
+        sendText(response, 200, await upstream.text(), "application/json; charset=utf-8");
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/ai/status") {
+        sendJson(response, 200, { configured: Boolean(process.env.MINIMAX_API_KEY?.trim()), model: process.env.MINIMAX_MODEL ?? "minimax-text-01" });
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/export") {
         const format = parseExportFormat(url.searchParams.get("format"));
         const state = await loadOrCreateState(storeOptions);
@@ -109,9 +137,15 @@ async function loadOrCreateState(storeOptions: { projectRoot?: string }): Promis
   const existing = await loadAppStateSnapshot(storeOptions);
   if (existing) return existing;
 
-  const state = createInitialAppState();
+  if (process.env.PLAYLENS_DEMO_MODE === "1") {
+    const state = createInitialAppState();
+    await saveAppStateSnapshot(state, storeOptions);
+    await seedSessionManifestsFromState(state, storeOptions);
+    return state;
+  }
+
+  const state = createEmptyAppState();
   await saveAppStateSnapshot(state, storeOptions);
-  await seedSessionManifestsFromState(state, storeOptions);
   return state;
 }
 

@@ -1,12 +1,16 @@
 import { useMemo, useState } from "react";
 import {
   Bot,
+  Chrome,
+  Clock,
   Database,
   Gauge,
+  Globe,
   LayoutDashboard,
   Search,
   Settings,
-  ShieldCheck
+  ShieldCheck,
+  AlertTriangle,
 } from "lucide-react";
 import { AIAgentPanel } from "./components/AIAgentPanel";
 import { GlobalSearch } from "./components/GlobalSearch";
@@ -23,8 +27,14 @@ const views: Array<{ key: ViewKey; label: string; icon: typeof LayoutDashboard }
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { key: "settings", label: "Settings", icon: Settings },
   { key: "agent", label: "AI Agent", icon: Bot },
-  { key: "data", label: "Data", icon: Database }
+  { key: "data", label: "Data", icon: Database },
 ];
+
+function formatDuration(ms?: number): string {
+  if (!ms) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
 
 export function App() {
   const [state, setState] = useState(() => createInitialAppState());
@@ -35,6 +45,8 @@ export function App() {
   const searchResults = useMemo(() => searchApp(state, query), [query, state]);
   const selectedTask = state.tasks.find((task) => task.id === state.selectedTaskId) ?? state.tasks[0];
   const aiAvailable = useMemo(() => hasMiniMaxApiKey(), []);
+  const session = state.sessions.find((s) => s.taskId === selectedTask?.id);
+  const taskIssueCount = state.issues.filter((i) => i.taskId === selectedTask?.id).length;
 
   const runAction = <T extends unknown[]>(action: (current: typeof state, ...args: T) => typeof state, ...args: T) => {
     setState((current) => action(current, ...args));
@@ -53,10 +65,6 @@ export function App() {
       <aside className="side-nav" aria-label="Primary navigation">
         <div className="brand-mark">
           <div className="brand-icon">PL</div>
-          <div>
-            <div className="brand-name">PlayLens</div>
-            <div className="brand-caption">Browser Dashboard</div>
-          </div>
         </div>
 
         <nav className="nav-stack">
@@ -66,7 +74,8 @@ export function App() {
               <button
                 key={view.key}
                 className={`nav-item ${activeView === view.key ? "active" : ""}`}
-                onClick={() => setActiveView(view.key)}
+                onClick={() => { setActiveView(view.key); setQuery(""); }}
+                title={view.label}
               >
                 <Icon size={17} />
                 <span>{view.label}</span>
@@ -75,11 +84,11 @@ export function App() {
           })}
         </nav>
 
-        <div className="system-card">
-          <ShieldCheck size={18} />
+        <div className="system-card" title={aiAvailable ? state.aiAgent.status : "AI disabled"}>
+          <ShieldCheck size={16} />
           <div>
             <strong>{aiAvailable ? state.aiAgent.mode : "AI disabled"}</strong>
-            <span>{aiAvailable ? state.aiAgent.status : "missing MiniMax key"}</span>
+            <span>{aiAvailable ? state.aiAgent.status : "missing key"}</span>
           </div>
         </div>
       </aside>
@@ -87,24 +96,42 @@ export function App() {
       <main className="main-shell">
         <header className="top-bar">
           <div className="task-title-block">
-            <span className="section-kicker">Tasks</span>
             <h1>{selectedTask?.name ?? "No task selected"}</h1>
+            {selectedTask && (
+              <span className={`info-badge status-${selectedTask.status}`}>
+                {selectedTask.status === "failed" ? "Failed" : selectedTask.status === "recording" ? "Recording" : selectedTask.status}
+              </span>
+            )}
+          </div>
+
+          <div className="info-badges">
+            {session?.browser && (
+              <span className="info-badge"><Chrome size={11} /> {session.browser.name} {session.browser.version?.split(".")[0]}</span>
+            )}
+            {selectedTask?.summary.durationMs && (
+              <span className="info-badge"><Clock size={11} /> {formatDuration(selectedTask.summary.durationMs)}</span>
+            )}
+            {selectedTask?.summary.currentUrl && (
+              <span className="info-badge"><Globe size={11} /> {new URL(selectedTask.summary.currentUrl).pathname}</span>
+            )}
+            {taskIssueCount > 0 && (
+              <span className="info-badge"><AlertTriangle size={11} /> {taskIssueCount}</span>
+            )}
           </div>
 
           <div className="search-shell">
-            <Search size={17} />
+            <Search size={14} />
             <input
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search tasks, settings, issues, events, AI history..."
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search..."
               aria-label="Search PlayLens"
             />
           </div>
 
           <div className="metric-strip">
-            <span><Gauge size={15} /> CPU {state.system.cpuPercent}%</span>
-            <span>Memory {state.system.memoryMb} MB</span>
-            <span>{state.issues.filter((issue) => issue.severity === "critical" || issue.severity === "high").length} high issues</span>
+            <span><Gauge size={12} /> CPU {state.system.cpuPercent}%</span>
+            <span>Mem {state.system.memoryMb} MB</span>
           </div>
         </header>
 
@@ -147,7 +174,7 @@ export function App() {
             {activeView === "agent" && (
               <AIAgentPanel
                 mode={state.aiAgent.mode}
-                status={state.aiAgent.status === "waiting-for-approval" ? "running" : state.aiAgent.status}
+                status={state.aiAgent.status === "waiting-for-approval" ? "paused" : state.aiAgent.status}
                 onPause={() => runAction(appActions.pauseAgent)}
                 onResume={() => runAction(appActions.resumeAgent)}
                 onStop={() => runAction(appActions.stopAgent)}

@@ -94,7 +94,7 @@ export function SettingsPage({ state, highlightTargetId, aiAvailable, onUpdateSe
             <section className="settings-group ai-unavailable-note">
               <div className="settings-group-header">
                 <h3>AI features unavailable</h3>
-                <p>MiniMax API key is missing. AI settings can be edited and saved, but they only take effect after `VITE_MINIMAX_API_KEY` or `MINIMAX_API_KEY` is provided and PlayLens is restarted.</p>
+                <p>MiniMax API key is missing. AI settings can be edited and saved, but they only take effect after <code>MINIMAX_API_KEY</code> is set on the backend server and PlayLens is restarted.</p>
               </div>
             </section>
           ) : null}
@@ -186,7 +186,7 @@ function supplementalItems(groupId: string): SettingItem[] {
     ],
     system: [
       make("daemon", "Recorder daemon", "Background process for folder watching and local capture coordination.", "Running", "text"),
-      make("port", "Local API port", "Port used by dashboard, recorder, SDK, and local integrations.", 4127, "number"),
+      make("port", "Local API port", "Port used by dashboard, recorder, SDK, and local integrations.", 4174, "number"),
     ],
     advanced: [
       make("schema", "Event schema version", "Version used by event streams, SDK, exports, and replay indexing.", "2026.05-alpha", "text"),

@@ -220,7 +220,7 @@ export function AIAgentPanel({
     "",
     "MiniMax API key is not configured, so AI chat, file context, and agent actions are disabled.",
     "",
-    "Settings can still be edited and saved. AI-related settings will only take effect after `VITE_MINIMAX_API_KEY` or `MINIMAX_API_KEY` is provided and PlayLens is restarted.",
+    "Settings can still be edited and saved. AI-related settings will only take effect after `MINIMAX_API_KEY` is set on the backend server and PlayLens is restarted.",
   ].join("\n");
   const [assistantMessage, setAssistantMessage] = useState(
     aiAvailable ? latestStateMessage?.contentMarkdown ?? latestStateMessage?.content ?? sampleMessage : unavailableMessage,

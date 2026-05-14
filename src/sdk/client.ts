@@ -11,7 +11,7 @@ export class PlayLensClient {
   private readonly fetchImpl: typeof fetch;
 
   constructor(options: PlayLensClientOptions = {}) {
-    this.baseUrl = options.baseUrl ?? "http://127.0.0.1:4357";
+    this.baseUrl = options.baseUrl ?? "http://127.0.0.1:4174";
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 

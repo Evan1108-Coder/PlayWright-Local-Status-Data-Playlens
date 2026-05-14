@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { RecorderStore, type RecorderSeverity } from "./storage";
-import { findProjectRoot, resolveProjectStorageRoot } from "./projectScope";
+import { findProjectRoot, resolveProjectStorageRoot, readProjectConfig, detectProject } from "./projectScope";
+import type { SessionId, TaskId } from "../data/types";
 
 export interface RunSupervisorOptions {
   command: string[];
@@ -31,17 +32,24 @@ export async function runSupervisedCommand(options: RunSupervisorOptions): Promi
   const cwd = resolve(options.cwd ?? process.cwd());
   const commandText = options.command.join(" ");
   const projectRoot = findProjectRoot(cwd) ?? cwd;
+
+  if (!shouldRecordCommand(projectRoot, cwd, options.command)) {
+    return runPassthrough(options.command, cwd);
+  }
+
   const store = new RecorderStore(options.storageRoot ?? resolveProjectStorageRoot(projectRoot));
   const session = store.createSession({ command: commandText, cwd, name: deriveRunName(options.command) });
   const registerPath = getRuntimeRegisterPath();
+  const esmRegisterPath = getEsmRegisterPath();
   const canInject = options.injectRuntime !== false && existsSync(registerPath);
+  const canInjectEsm = canInject && existsSync(esmRegisterPath) && supportsImportFlag();
   const childEnv = {
     ...process.env,
     PLAYLENS_SESSION_ID: session.manifest.sessionId,
     PLAYLENS_TASK_ID: session.manifest.taskId,
     PLAYLENS_STORAGE_DIR: store.storageRoot,
     PLAYLENS_SUPERVISED: "1",
-    NODE_OPTIONS: canInject ? mergeNodeOptions(process.env.NODE_OPTIONS, registerPath) : process.env.NODE_OPTIONS
+    NODE_OPTIONS: canInject ? mergeNodeOptions(process.env.NODE_OPTIONS, registerPath, canInjectEsm ? esmRegisterPath : undefined) : process.env.NODE_OPTIONS
   };
 
   store.writeEvent(session, {
@@ -124,6 +132,16 @@ export function getRuntimeRegisterPath(): string {
   return resolve(here, "..", "..", "playlens-runtime", "register.cjs");
 }
 
+export function getEsmRegisterPath(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return resolve(here, "..", "..", "playlens-runtime", "register-esm.mjs");
+}
+
+function supportsImportFlag(): boolean {
+  const parts = process.versions.node.split(".").map(Number);
+  return parts[0] > 18 || (parts[0] === 18 && parts[1] >= 19);
+}
+
 function writeTerminalChunk(store: RecorderStore, session: Parameters<RecorderStore["writeEvent"]>[0], stream: "stdout" | "stderr", text: string): void {
   const trimmed = text.replace(/\s+$/g, "");
   store.writeEvent(session, {
@@ -135,11 +153,55 @@ function writeTerminalChunk(store: RecorderStore, session: Parameters<RecorderSt
   });
 }
 
-function mergeNodeOptions(existing: string | undefined, registerPath: string): string {
-  const requireFlag = `--require ${JSON.stringify(registerPath)}`;
-  if (!existing?.trim()) return requireFlag;
-  if (existing.includes(registerPath)) return existing;
-  return `${existing} ${requireFlag}`;
+function mergeNodeOptions(existing: string | undefined, registerPath: string, esmRegisterPath?: string): string {
+  let result = existing?.trim() ?? "";
+  if (!result.includes(registerPath)) {
+    const requireFlag = `--require ${JSON.stringify(registerPath)}`;
+    result = result ? `${result} ${requireFlag}` : requireFlag;
+  }
+  if (esmRegisterPath && !result.includes(esmRegisterPath)) {
+    result = `${result} --import ${JSON.stringify(esmRegisterPath)}`;
+  }
+  return result;
+}
+
+function shouldRecordCommand(projectRoot: string, cwd: string, command: string[]): boolean {
+  try {
+    const config = readProjectConfig(projectRoot);
+    if (!config.tasks.recordOnlyWhenPlaywrightDetected) return true;
+  } catch {
+    return true;
+  }
+
+  const commandStr = command.join(" ").toLowerCase();
+  if (commandStr.includes("playwright")) return true;
+
+  const detected = detectProject(cwd);
+  if (detected.playwrightConfig || detected.npmScripts.length > 0 || detected.testFiles > 0) return true;
+
+  try {
+    const pkg = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8")) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    if (pkg.dependencies?.["playwright"] || pkg.devDependencies?.["playwright"] ||
+        pkg.dependencies?.["@playwright/test"] || pkg.devDependencies?.["@playwright/test"]) return true;
+  } catch { /* no package.json or parse error */ }
+
+  return false;
+}
+
+function runPassthrough(command: string[], cwd: string): Promise<RunSupervisorResult> {
+  return new Promise((resolvePromise) => {
+    const child = spawn(command[0], command.slice(1), {
+      cwd,
+      shell: process.platform === "win32",
+      stdio: "inherit"
+    });
+    child.on("error", () => {
+      resolvePromise({ sessionId: "session-skipped" as SessionId, taskId: "task-skipped" as TaskId, exitCode: 1, signal: null, storageRoot: "", sessionDir: "" });
+    });
+    child.on("close", (exitCode, signal) => {
+      resolvePromise({ sessionId: "session-skipped" as SessionId, taskId: "task-skipped" as TaskId, exitCode, signal, storageRoot: "", sessionDir: "" });
+    });
+  });
 }
 
 function deriveRunName(command: string[]): string {

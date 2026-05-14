@@ -8,12 +8,12 @@ interface GlobalSearchProps {
 
 export function GlobalSearch({ query, results, onOpenResult }: GlobalSearchProps) {
   return (
-    <section className="global-search-results" aria-label="Search results">
-      <div className="search-results-header">
+    <section className="global-search" aria-label="Search results">
+      <div className="search-summary">
         <strong>Search results</strong>
         <span>{results.length} for "{query}"</span>
       </div>
-      <div className="search-results-list">
+      <div className="search-results">
         {results.length === 0 && <p>No matching PlayLens data yet.</p>}
         {results.map((result) => (
           <button key={result.id} className={`search-result ${result.color}`} onClick={() => onOpenResult(result)}>

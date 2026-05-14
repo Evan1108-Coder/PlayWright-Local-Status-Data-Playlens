@@ -2,45 +2,46 @@
 
 PlayLens is a local-first observability dashboard for Playwright runs. It captures tasks, browser/runtime events, terminal output, network-style evidence, settings, exports, and AI-agent-ready context so developers can inspect and share automation sessions.
 
-## What Is Included
+## Features
 
-- React + Vite + TypeScript dashboard.
-- Node backend API for health, state, sessions, and exports.
-- CLI supervisor for recording command runs.
-- Runtime hook that detects `playwright` and `@playwright/test` imports.
-- Playwright reporter shape for test lifecycle events.
-- Local filesystem storage and JSON/NDJSON/Markdown exports.
-- SDK client shape for consuming PlayLens data in code.
-- AI operator panel that stays disabled until a MiniMax API key is configured.
-- Demo project under `demo-projects/payment-checkout-playwright-demo`.
+- **Investigation Dashboard** — Timeline, browser replay mock, metric charts, issue focus, network waterfall, and terminal output
+- **Task Management** — Track multiple Playwright tasks with status, entry files, and session associations
+- **Settings Control Center** — 13 settings groups covering general, capture, runtime, AI, privacy, integrations, and more
+- **AI Agent Panel** — MiniMax-powered operator with 4 permission modes and 8 tools (optional, disabled without API key)
+- **Data Access** — API health, session browser, and export links (JSON, NDJSON, Markdown)
+- **Global Search** — Search across tasks, settings, issues, events, and AI history
+- **CLI** — Initialize projects, run commands under supervision, export data, and check system health
+- **Recorder System** — Runtime hook detects Playwright imports, process supervisor captures child process output
+- **SDK Client** — Programmatic access to PlayLens data for custom integrations
+- **Local Storage** — File-based session storage in `.playlens/` with no external dependencies
 
 ## Quick Start
 
-Install dependencies:
-
 ```bash
+# Install dependencies
 npm install
-```
 
-Start the backend:
-
-```bash
+# Start the backend API server (port 4174)
 npm run api
+
+# Start the dashboard (in another terminal)
+npm run dev
+
+# Open http://127.0.0.1:5173
 ```
 
-Start the dashboard in another terminal:
+## AI Features (Optional)
+
+AI features require a MiniMax API key. Without it, PlayLens works normally.
 
 ```bash
-npm run dev -- --port 5174
+cp .env.example .env
+# Edit .env and add: MINIMAX_API_KEY=your_key_here
 ```
 
-Open:
+See `ENV.md` for detailed environment variable documentation.
 
-```text
-http://127.0.0.1:5174/
-```
-
-## Try The Demo
+## Try the Demo
 
 ```bash
 cd demo-projects/payment-checkout-playwright-demo
@@ -59,26 +60,67 @@ Export captured data:
 ../../node_modules/.bin/tsx ../../src/cli/playlens.ts export --format ndjson
 ```
 
-The demo uses a local Playwright stub, so it proves detection without downloading real browsers.
+## CLI Usage
 
-## AI
-
-AI features are optional. If no MiniMax API key is provided, PlayLens continues working and the AI panel shows an unavailable state.
-
-To enable AI later, create `.env`:
-
-```text
-VITE_MINIMAX_API_KEY=your_key_here
-VITE_PLAYLENS_API_BASE=http://127.0.0.1:4174
+```bash
+npm run playlens -- init <folder>    # Initialize a project folder
+npm run playlens -- run -- <command> # Run a command under PlayLens supervision
+npm run playlens -- server           # Start the API server
+npm run playlens -- export           # Export session data
+npm run playlens -- doctor           # System health check
+npm run playlens -- help             # Show help
 ```
-
-Do not commit `.env`.
 
 ## Verification
 
 ```bash
-npm run lint
-npm run test
-npm run build
+npm run lint         # TypeScript type-check
+npm run test         # All unit tests (logic, agent, minimax, recorder)
+npm run test:smoke   # Full smoke test
+npm run build        # Production build
 ```
 
+## Tech Stack
+
+| Technology | Version | Purpose |
+|-----------|---------|---------|
+| React | 19 | UI framework |
+| Vite | 6 | Build tool and dev server |
+| TypeScript | 5.6 | Type safety |
+| Node.js | 22+ | Backend runtime |
+| Lucide React | 0.468 | Icon library |
+| MiniMax API | minimax-text-01 | AI features (optional) |
+
+## Project Structure
+
+```
+src/
+  agent/        — AI agent runtime, tools, MiniMax adapter, file ingestion
+  cli/          — CLI commands (init, run, server, export, doctor)
+  components/   — React UI components (7 components)
+  data/         — Type definitions and mock data
+  exporters/    — JSON, NDJSON, Markdown export formatters
+  recorder/     — Process supervisor, Playwright reporter, runtime hook
+  sdk/          — Client SDK for consuming PlayLens data
+  server/       — Node HTTP backend API (port 4174)
+  state/        — Central state management
+  storage/      — File-based session storage
+  styles/       — Dark theme CSS
+  tests/        — Unit tests (4 suites)
+scripts/        — Full smoke test runner
+playlens-runtime/ — Node.js runtime hooks (CJS register.cjs + ESM esm-hooks.mjs)
+demo-projects/  — Example Playwright project
+```
+
+## Documentation
+
+- `SETUP.md` — Detailed installation and setup instructions
+- `ENV.md` — Environment variable reference
+- `TROUBLESHOOTING.md` — Common issues and solutions
+- `CONTRIBUTING.md` — How to contribute
+- `CHANGELOG.md` — Version history
+- `LICENSE` — MIT License
+
+## License
+
+MIT — see `LICENSE` for details.

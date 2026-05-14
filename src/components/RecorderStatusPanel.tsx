@@ -33,7 +33,7 @@ const recorderRows = [
   {
     icon: Bot,
     title: "MiniMax agent adapter",
-    detail: "AI stays unavailable until VITE_MINIMAX_API_KEY or MINIMAX_API_KEY is configured; no-key mode never fakes chat responses.",
+    detail: "AI stays unavailable until MINIMAX_API_KEY is configured on the backend server; no-key mode never fakes chat responses.",
     status: "ready"
   }
 ];
@@ -68,7 +68,7 @@ export function RecorderStatusPanel({ apiOnline, storageRoot }: RecorderStatusPa
       </div>
       <div className="storage-line">
         <strong>Storage root</strong>
-        <code>{storageRoot ?? ".playlens-data, once the backend server is running"}</code>
+        <code>{storageRoot ?? ".playlens, once the backend server is running"}</code>
       </div>
     </section>
   );

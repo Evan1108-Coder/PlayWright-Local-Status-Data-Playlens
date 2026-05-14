@@ -35,6 +35,23 @@ export function createInitialAppState(): PlayLensState {
   } as PlayLensState);
 }
 
+export function createEmptyAppState(): PlayLensState {
+  return normalizeState({
+    tasks: [],
+    sessions: [],
+    events: [],
+    issues: [],
+    settingsGroups: structuredClone(initialAppState.settingsGroups),
+    projectScopes: [],
+    auditLog: [],
+    aiAgent: structuredClone(initialAppState.aiAgent),
+    uploadedFiles: [],
+    systemMetrics: [],
+    lastUpdatedAt: new Date().toISOString(),
+    selectedTaskId: ("task-empty" as TaskId),
+  } as PlayLensState);
+}
+
 export const appActions = {
   renameTask(state: PlayLensState, taskId: TaskId, name: string): PlayLensState {
     const task = state.tasks.find((item) => item.id === taskId);
@@ -272,10 +289,12 @@ function updateAgentStatus(state: PlayLensState, status: PlayLensState["aiAgent"
 }
 
 function normalizeState(state: PlayLensState): PlayLensState {
-  const latestMetric = state.systemMetrics.at(-1);
+  const selectedId = state.selectedTaskId ?? state.tasks[0]?.id;
+  const taskMetrics = state.systemMetrics.filter((m) => m.taskId === selectedId);
+  const latestMetric = taskMetrics.at(-1) ?? state.systemMetrics.at(-1);
   return {
     ...state,
-    selectedTaskId: state.selectedTaskId ?? state.tasks[0]?.id,
+    selectedTaskId: selectedId,
     agent: state.aiAgent,
     system: {
       cpuPercent: latestMetric?.cpuPercent ?? 0,

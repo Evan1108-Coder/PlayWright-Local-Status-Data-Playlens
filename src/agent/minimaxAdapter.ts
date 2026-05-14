@@ -46,10 +46,12 @@ export interface MiniMaxCompletionResponse {
 
 export class MiniMaxUnavailableError extends Error {
   constructor() {
-    super("MiniMax API key is not configured. AI features are unavailable until VITE_MINIMAX_API_KEY or MINIMAX_API_KEY is provided.");
+    super("MiniMax API key is not configured on the server. Set MINIMAX_API_KEY on the backend to enable AI features.");
     this.name = "MiniMaxUnavailableError";
   }
 }
+
+const IS_BROWSER = typeof window !== "undefined" && typeof window.document !== "undefined";
 
 export interface MiniMaxAdapter {
   readonly configured: boolean;
@@ -63,22 +65,35 @@ const DEFAULT_MODEL = "minimax-text-01";
 const DEFAULT_BASE_URL = "https://api.minimax.io/v1";
 
 export function createMiniMaxAdapter(options: MiniMaxAdapterOptions = {}): MiniMaxAdapter {
-  const apiKey = normalizeApiKey(options.apiKey ?? readEnv("VITE_MINIMAX_API_KEY", "MINIMAX_API_KEY"));
+  let apiKey: string | undefined;
+  let configured: boolean;
+
+  if (options.apiKey !== undefined) {
+    apiKey = normalizeApiKey(options.apiKey);
+    configured = Boolean(apiKey);
+  } else if (IS_BROWSER) {
+    apiKey = undefined;
+    configured = readEnv("VITE_PLAYLENS_AI_ENABLED") === "true";
+  } else {
+    apiKey = normalizeApiKey(readEnv("MINIMAX_API_KEY"));
+    configured = Boolean(apiKey);
+  }
+
   const model = options.model ?? readEnv("VITE_MINIMAX_MODEL", "MINIMAX_MODEL") ?? DEFAULT_MODEL;
   const baseUrl = options.baseUrl ?? readEnv("VITE_MINIMAX_BASE_URL", "MINIMAX_BASE_URL") ?? DEFAULT_BASE_URL;
   const mock = options.mock ?? false;
 
   return {
-    configured: Boolean(apiKey),
+    configured,
     model,
     baseUrl,
-    unavailableReason: apiKey ? undefined : "MiniMax API key is missing.",
+    unavailableReason: configured ? undefined : "MiniMax API key is missing.",
     async complete(request: MiniMaxCompletionRequest): Promise<MiniMaxCompletionResponse> {
       if (request.signal?.aborted) {
         throw new DOMException("MiniMax request was aborted.", "AbortError");
       }
 
-      if (!apiKey) {
+      if (!configured) {
         throw new MiniMaxUnavailableError();
       }
 
@@ -87,7 +102,11 @@ export function createMiniMaxAdapter(options: MiniMaxAdapterOptions = {}): MiniM
         return createMockResponse(model, request);
       }
 
-      return requestMiniMaxCompletion({ apiKey, model, baseUrl, request });
+      if (IS_BROWSER && !apiKey) {
+        return requestViaProxy({ model, request });
+      }
+
+      return requestMiniMaxCompletion({ apiKey: apiKey!, model, baseUrl, request });
     },
   };
 }
@@ -95,7 +114,10 @@ export function createMiniMaxAdapter(options: MiniMaxAdapterOptions = {}): MiniM
 export const minimaxAdapter = createMiniMaxAdapter();
 
 export function hasMiniMaxApiKey(): boolean {
-  return Boolean(normalizeApiKey(readEnv("VITE_MINIMAX_API_KEY", "MINIMAX_API_KEY")));
+  if (IS_BROWSER) {
+    return readEnv("VITE_PLAYLENS_AI_ENABLED") === "true";
+  }
+  return Boolean(normalizeApiKey(readEnv("MINIMAX_API_KEY")));
 }
 
 function createMockResponse(model: string, request: MiniMaxCompletionRequest): MiniMaxCompletionResponse {
@@ -132,6 +154,46 @@ function createMockResponse(model: string, request: MiniMaxCompletionRequest): M
       "",
       "> Suggested action: pin the payment failure, open the network waterfall around the failed request, and keep the agent in **Ask Before Acting** mode for destructive settings.",
     ].join("\n"),
+  };
+}
+
+async function requestViaProxy(input: {
+  model: string;
+  request: MiniMaxCompletionRequest;
+}): Promise<MiniMaxCompletionResponse> {
+  const proxyBase = readEnv("VITE_PLAYLENS_API_BASE") ?? "http://127.0.0.1:4174";
+  const response = await fetch(`${proxyBase}/api/ai/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messages: input.request.messages,
+      temperature: input.request.temperature ?? 0.2,
+      maxTokens: input.request.maxTokens ?? 1200,
+    }),
+    signal: input.request.signal,
+  });
+
+  if (!response.ok) {
+    if (response.status === 503) throw new MiniMaxUnavailableError();
+    const detail = await response.text().catch(() => "");
+    throw new Error(`AI proxy error: ${response.status} ${response.statusText}${detail ? ` - ${detail.slice(0, 240)}` : ""}`);
+  }
+
+  const json = (await response.json()) as {
+    id?: string;
+    model?: string;
+    choices?: Array<{ message?: { content?: string }; text?: string }>;
+  };
+  const content = json.choices?.[0]?.message?.content ?? json.choices?.[0]?.text ?? "";
+
+  return {
+    id: json.id ?? `minimax-${Date.now().toString(36)}`,
+    model: json.model ?? input.model,
+    usedMock: false,
+    createdAt: new Date().toISOString(),
+    inspectedSources: input.request.contextSources?.map((source) => source.id) ?? [],
+    fileIds: input.request.files?.map((file) => file.id) ?? [],
+    content: content || "MiniMax returned an empty response.",
   };
 }
 

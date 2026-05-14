@@ -11,7 +11,7 @@ import type { Session, SessionId, TimelineEvent } from "../data/types";
 import type { PlayLensState } from "../state/appState";
 import { createExportContent } from "../exporters/exporters";
 
-const DATA_DIR_NAME = ".playlens-data";
+const DATA_DIR_NAME = ".playlens";
 const CURRENT_STATE_FILE = "current.json";
 
 export interface SessionStoreOptions {
@@ -48,11 +48,14 @@ export async function initializeStorage(options: SessionStoreOptions = {}): Prom
 
 export function getStoragePaths(options: SessionStoreOptions = {}): StoragePaths {
   const rootDir = path.resolve(options.dataDir ?? path.join(options.projectRoot ?? process.cwd(), DATA_DIR_NAME));
+  const sessionsDir = process.env.PLAYLENS_STORAGE_DIR
+    ? path.resolve(process.env.PLAYLENS_STORAGE_DIR)
+    : path.join(rootDir, "sessions");
   return {
     rootDir,
     stateDir: path.join(rootDir, "state"),
     snapshotsDir: path.join(rootDir, "state", "snapshots"),
-    sessionsDir: path.join(rootDir, "sessions"),
+    sessionsDir,
     exportsDir: path.join(rootDir, "exports")
   };
 }
@@ -161,27 +164,54 @@ export async function readManifest(sessionId: SessionId, options: SessionStoreOp
 export async function listSessions(options: SessionStoreOptions = {}): Promise<StoredSessionSummary[]> {
   const paths = await initializeStorage(options);
   const entries = await fs.readdir(paths.sessionsDir, { withFileTypes: true });
-  const manifests = await Promise.all(
+  const rawManifests = await Promise.all(
     entries
       .filter((entry) => entry.isDirectory())
-      .map((entry) => readJsonFile<SessionManifest>(path.join(paths.sessionsDir, entry.name, "manifest.json")))
+      .map((entry) => readJsonFile<Record<string, unknown>>(path.join(paths.sessionsDir, entry.name, "manifest.json")))
   );
 
-  return manifests
-    .filter((manifest): manifest is SessionManifest => Boolean(manifest))
-    .map((manifest) => ({
-      id: manifest.session.id,
-      taskId: manifest.session.taskId,
-      title: manifest.session.title,
-      status: manifest.session.status,
-      browserName: manifest.session.browser.name,
-      startedAt: manifest.session.startedAt,
-      updatedAt: manifest.updatedAt,
-      currentUrl: manifest.session.currentUrl,
-      eventCount: manifest.eventCount,
-      issueCount: manifest.session.issueIds.length
-    }))
+  return rawManifests
+    .map((raw) => parseAnyManifest(raw))
+    .filter((summary): summary is StoredSessionSummary => Boolean(summary))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+function parseAnyManifest(raw: Record<string, unknown> | null): StoredSessionSummary | null {
+  if (!raw) return null;
+
+  if (raw.session && typeof raw.session === "object") {
+    const m = raw as unknown as SessionManifest;
+    return {
+      id: m.session.id,
+      taskId: m.session.taskId,
+      title: m.session.title,
+      status: m.session.status,
+      browserName: m.session.browser.name,
+      startedAt: m.session.startedAt,
+      updatedAt: m.updatedAt,
+      currentUrl: m.session.currentUrl,
+      eventCount: m.eventCount,
+      issueCount: m.session.issueIds.length
+    };
+  }
+
+  if (typeof raw.sessionId === "string") {
+    const status = String(raw.status ?? "pending");
+    return {
+      id: raw.sessionId as SessionId,
+      taskId: (raw.taskId ?? "task-unknown") as Session["taskId"],
+      title: (raw.name as string) ?? "Recorded Session",
+      status: (["running", "completed", "failed", "stopped"].includes(status) ? status : "pending") as Session["status"],
+      browserName: "unknown",
+      startedAt: (raw.startedAt as string) ?? new Date().toISOString(),
+      updatedAt: (raw.endedAt as string) ?? (raw.startedAt as string) ?? new Date().toISOString(),
+      currentUrl: undefined,
+      eventCount: (raw.eventCount as number) ?? 0,
+      issueCount: 0
+    };
+  }
+
+  return null;
 }
 
 export async function createSessionExport(
