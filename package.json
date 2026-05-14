@@ -1,0 +1,34 @@
+{
+  "name": "playlens-browser-dashboard-program",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "lint": "tsc --noEmit",
+    "test:logic": "tsx src/tests/logic.test.ts",
+    "test:agent": "tsx src/tests/agent.test.ts",
+    "test:recorder": "tsx src/tests/recorder.test.ts",
+    "test:minimax": "tsx src/tests/minimaxAdapter.test.ts",
+    "test:smoke": "tsx scripts/full-smoke.mjs",
+    "test": "npm run test:logic && npm run test:agent && npm run test:minimax && npm run test:recorder",
+    "playlens": "tsx src/cli/playlens.ts",
+    "api": "tsx src/server/server.ts"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.7.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "tsx": "^4.19.0"
+  }
+}

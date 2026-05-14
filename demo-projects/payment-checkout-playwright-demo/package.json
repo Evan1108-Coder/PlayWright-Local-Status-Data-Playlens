@@ -1,0 +1,15 @@
+{
+  "name": "payment-checkout-playwright-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Small PlayLens demo project that imports Playwright and emits useful browser-style telemetry.",
+  "scripts": {
+    "demo:pass": "node src/checkout-pass.cjs",
+    "demo:fail": "node src/checkout-failure.cjs",
+    "demo:no-playwright": "node src/no-playwright.cjs"
+  },
+  "dependencies": {
+    "playwright": "file:./vendor/playwright-stub"
+  }
+}
+

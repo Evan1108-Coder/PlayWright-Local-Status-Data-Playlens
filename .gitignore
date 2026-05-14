@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+.DS_Store
+.playlens/
+.playlens-data/
+*.tsbuildinfo
+coverage/
+*.log
+demo-projects/**/node_modules
+demo-projects/**/package-lock.json
