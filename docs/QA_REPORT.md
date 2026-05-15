@@ -1,6 +1,6 @@
 # PlayLens QA Report
 
-Date: 2026-05-14
+Date: 2026-05-15
 
 ## Test Fixtures
 
@@ -15,6 +15,10 @@ Created controlled smoke folders:
   - Contains `.playlens/project.json` after init.
   - Runs a normal Node script with no Playwright import.
 
+- `/Users/EvanLu/Documents/Codex/2026-05-13/do-you-know-playwright/actual-playwright-accuracy-workspace`
+  - Uses real `@playwright/test` and real Chromium.
+  - Records a checkout failure with `POST /api/payment`, a real `500` response, console errors, DOM before/after text, and a failing assertion.
+
 ## Commands Verified
 
 ```bash
@@ -28,6 +32,7 @@ curl -s 'http://127.0.0.1:4174/api/sessions'
 curl -s 'http://127.0.0.1:4174/api/export?format=json'
 curl -s 'http://127.0.0.1:4174/api/export?format=ndjson'
 curl -s 'http://127.0.0.1:4174/api/export?format=markdown'
+PLAYLENS_STORAGE_DIR="/path/to/project/.playlens/sessions" npm run api
 ```
 
 ## Verified Capabilities
@@ -38,10 +43,16 @@ curl -s 'http://127.0.0.1:4174/api/export?format=markdown'
 - Non-Playwright fixture does not emit `playwright.detected`.
 - JSON, NDJSON, and Markdown exports work.
 - SDK client reaches backend health and sessions endpoints.
-- Backend `/api/sessions` seeds demo sessions even when it is the first API call after fresh storage.
+- Backend starts from empty state unless `PLAYLENS_DEMO_MODE=1` is explicitly set.
+- Backend `/api/state` hydrates tasks, sessions, events, issues, URLs, durations, and viewport data from `PLAYLENS_STORAGE_DIR`.
+- Empty session folders render a blank dashboard with a no-active-recording message instead of demo data.
+- Real Playwright folder renders latest recorded session first after a fresh run.
+- Replay tabs switch between honest Replay empty state, DOM, Console, Network, and Logs data.
+- Graph/Table tabs switch and show real causal data.
 - AI is disabled without MiniMax API key.
-- AI chat, upload, and action controls are disabled without a key.
+- AI chat text remains typeable without a key and shows a clear unavailable message; uploads and mutating agent actions remain disabled.
 - AI settings show pending state until a MiniMax key is configured.
+- Settings changes save through `/api/state` and sync back from the backend.
 - Global search returns linked settings results and navigates to Settings.
 - Data page shows true backend event and issue counts.
 - Browser console has no runtime errors during checked pages.
@@ -72,11 +83,20 @@ curl -s 'http://127.0.0.1:4174/api/export?format=markdown'
 8. Seed mock task summaries disagreed with actual event data.
    - Fixed Auth Smoke and Marketing Candidate event counts.
 
+9. Dashboard initialized from demo data even when the backend was pointed at a real Playwright folder.
+   - Fixed by starting the frontend from empty state and polling hydrated backend state.
+
+10. UI panels rendered fake checkout/browser values when no screenshot or no real recording existed.
+   - Fixed by replacing fake replay with real evidence panes and explicit empty states.
+
+11. Graph/Table and Replay tabs looked clickable but did not switch content.
+   - Fixed by adding local tab state and real table/evidence renderers.
+
+12. AI input was disabled/invisible without an API key.
+   - Fixed by allowing typing while keeping responses/actions disabled with a clear warning.
+
 ## Remaining Risks
 
-- Real browser capture against a real installed Playwright project still needs broader testing with downloaded browsers.
-- CDP-level performance, DOM snapshots, screenshots, HAR, and video capture are architecture-ready but not fully implemented.
+- CDP-level performance, screenshots, HAR, and video capture are architecture-ready but not fully implemented.
 - MiniMax live transport is shaped but should be tested with a real key before claiming production readiness.
-- Screenshot capture in the Codex in-app browser timed out during QA, so visual validation used DOM snapshots and console logs instead.
 - The UI is currently desktop-first and should still receive explicit viewport testing once the Browser screenshot path is stable.
-

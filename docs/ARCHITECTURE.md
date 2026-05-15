@@ -51,9 +51,9 @@ The UI is a professional investigation cockpit, but the data must also be usable
 8. **Dashboard UI**
    - Task switcher.
    - Timeline.
-   - Browser replay.
+   - Browser replay/evidence panes.
    - Inspector.
-   - Graphs.
+   - Graph and table causal views.
    - Network/DOM/console/system views.
    - AI Agent.
    - Settings and global search.
@@ -61,6 +61,8 @@ The UI is a professional investigation cockpit, but the data must also be usable
 ## Source Of Truth Rule
 
 No UI panel owns independent truth for important data.
+
+When `PLAYLENS_STORAGE_DIR` points at a project-local `.playlens/sessions` directory, the backend treats that session stream as the source of truth for tasks, sessions, events, issues, current URLs, durations, and browser viewport metadata. The frontend starts from empty state, polls `/api/state`, and renders blank panels when no real recording exists instead of falling back to demo values.
 
 Examples:
 

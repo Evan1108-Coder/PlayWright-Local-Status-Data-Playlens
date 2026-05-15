@@ -4,7 +4,7 @@ PlayLens is a local-first observability dashboard for Playwright runs. It captur
 
 ## Features
 
-- **Investigation Dashboard** — Timeline, browser replay mock, metric charts, issue focus, network waterfall, and terminal output
+- **Investigation Dashboard** — Timeline, real captured evidence panes, metric charts, issue focus, network waterfall, graph/table causal views, and terminal output
 - **Task Management** — Track multiple Playwright tasks with status, entry files, and session associations
 - **Settings Control Center** — 13 settings groups covering general, capture, runtime, AI, privacy, integrations, and more
 - **AI Agent Panel** — MiniMax-powered operator with 4 permission modes and 8 tools (optional, disabled without API key)
@@ -30,6 +30,42 @@ npm run dev
 # Open http://127.0.0.1:5173
 ```
 
+By default the dashboard starts empty. It does not show demo recordings unless `PLAYLENS_DEMO_MODE=1` is set.
+
+## Connect A Real Playwright Folder
+
+Initialize the folder once:
+
+```bash
+cd /path/to/your/playwright-project
+"/path/to/PlayLens Browser Dashboard Program/node_modules/.bin/tsx" \
+"/path/to/PlayLens Browser Dashboard Program/src/cli/playlens.ts" init .
+```
+
+Run Playwright through PlayLens:
+
+```bash
+cd /path/to/your/playwright-project
+"/path/to/PlayLens Browser Dashboard Program/node_modules/.bin/tsx" \
+"/path/to/PlayLens Browser Dashboard Program/src/cli/playlens.ts" run -- npm run test:e2e
+```
+
+Start the dashboard against that folder's real sessions:
+
+```bash
+cd "/path/to/PlayLens Browser Dashboard Program"
+PLAYLENS_STORAGE_DIR="/path/to/your/playwright-project/.playlens/sessions" npm run api
+```
+
+In another terminal:
+
+```bash
+cd "/path/to/PlayLens Browser Dashboard Program"
+npm run dev -- --port 5173
+```
+
+Open `http://127.0.0.1:5173/`. If the sessions folder is empty, the dashboard stays blank with a "No active recording" message.
+
 ## AI Features (Optional)
 
 AI features require a MiniMax API key. Without it, PlayLens works normally.
@@ -41,7 +77,7 @@ cp .env.example .env
 
 See `ENV.md` for detailed environment variable documentation.
 
-## Try the Demo
+## Try The Included Demo
 
 ```bash
 cd demo-projects/payment-checkout-playwright-demo

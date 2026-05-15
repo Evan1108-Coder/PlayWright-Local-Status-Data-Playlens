@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bot,
   Chrome,
@@ -20,8 +20,9 @@ import { InvestigationDashboard } from "./components/InvestigationDashboard";
 import { SettingsPage } from "./components/SettingsPage";
 import { TaskRail } from "./components/TaskRail";
 import { DataAccessPage } from "./components/DataAccessPage";
-import { createInitialAppState, searchApp, appActions } from "./state/appState";
+import { createEmptyAppState, searchApp, appActions } from "./state/appState";
 import { hasMiniMaxApiKey } from "./agent/minimaxAdapter";
+import { getStoredState, saveStoredState } from "./lib/apiClient";
 
 type ViewKey = "dashboard" | "settings" | "agent" | "data";
 
@@ -39,10 +40,24 @@ function formatDuration(ms?: number): string {
 }
 
 export function App() {
-  const [state, setState] = useState(() => createInitialAppState());
+  const [state, setState] = useState(() => createEmptyAppState());
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [query, setQuery] = useState("");
   const [highlightTargetId, setHighlightTargetId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const refresh = () => void getStoredState().then((result) => {
+      if (!active || !result.ok || !result.data) return;
+      setState(result.data);
+    });
+    refresh();
+    const timer = window.setInterval(refresh, 2500);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   const searchResults = useMemo(() => searchApp(state, query), [query, state]);
   const selectedTask = state.tasks.find((task) => task.id === state.selectedTaskId) ?? state.tasks[0];
@@ -51,7 +66,11 @@ export function App() {
   const taskIssueCount = state.issues.filter((i) => i.taskId === selectedTask?.id).length;
 
   const runAction = <T extends unknown[]>(action: (current: typeof state, ...args: T) => typeof state, ...args: T) => {
-    setState((current) => action(current, ...args));
+    setState((current) => {
+      const next = action(current, ...args);
+      void saveStoredState(next);
+      return next;
+    });
   };
 
   const jumpToTarget = (targetId: string, view?: ViewKey) => {
@@ -107,7 +126,7 @@ export function App() {
           </div>
 
           <div className="info-badges">
-            {session?.browser && (
+            {session?.browser && session.browser.name !== "unknown" && (
               <span className="top-stat"><small>Browser</small><strong><Chrome size={12} /> {session.browser.name} {session.browser.version?.split(".")[0]}</strong></span>
             )}
             {selectedTask?.summary.durationMs && (
@@ -131,10 +150,12 @@ export function App() {
             />
           </div>
 
-          <div className="metric-strip">
-            <span className="metric-danger"><small>CPU</small><strong><Gauge size={12} /> {state.system.cpuPercent}%</strong></span>
-            <span><small>Memory</small><strong>{(state.system.memoryMb / 1024).toFixed(1)} GB</strong></span>
-          </div>
+          {state.systemMetrics.length > 0 ? (
+            <div className="metric-strip">
+              <span className="metric-danger"><small>CPU</small><strong><Gauge size={12} /> {state.system.cpuPercent}%</strong></span>
+              <span><small>Memory</small><strong>{(state.system.memoryMb / 1024).toFixed(1)} GB</strong></span>
+            </div>
+          ) : null}
 
           <button className="top-action-button" type="button">
             <Download size={13} /> Export
@@ -158,7 +179,11 @@ export function App() {
               tasks={state.tasks}
               selectedTaskId={state.selectedTaskId}
               highlightTargetId={highlightTargetId}
-              onSelectTask={(taskId) => setState((current) => ({ ...current, selectedTaskId: taskId }))}
+              onSelectTask={(taskId) => setState((current) => {
+                const next = { ...current, selectedTaskId: taskId };
+                void saveStoredState(next);
+                return next;
+              })}
               onRenameTask={(taskId, name) => runAction(appActions.renameTask, taskId, name)}
             />
           )}
@@ -170,6 +195,7 @@ export function App() {
                 selectedTask={selectedTask}
                 highlightTargetId={highlightTargetId}
                 onOpenSettings={() => setActiveView("settings")}
+                aiAvailable={aiAvailable}
               />
             )}
             {activeView === "settings" && (

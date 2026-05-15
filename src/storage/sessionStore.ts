@@ -7,7 +7,7 @@ import type {
   SessionManifest,
   StoredSessionSummary
 } from "../server/apiTypes";
-import type { BrowserName, EventId, EventKind, EventSeverity, IssueId, Session, SessionId, Task, TaskId, TimelineEvent } from "../data/types";
+import type { BrowserName, EventId, EventKind, EventSeverity, Issue, IssueCategory, IssueId, Session, SessionId, Task, TaskId, TimelineEvent } from "../data/types";
 import type { PlayLensState } from "../state/appState";
 import { createExportContent } from "../exporters/exporters";
 
@@ -173,7 +173,7 @@ export async function listSessions(options: SessionStoreOptions = {}): Promise<S
   return rawManifests
     .map((raw) => parseAnyManifest(raw))
     .filter((summary): summary is StoredSessionSummary => Boolean(summary))
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    .sort((a, b) => (b.endedAt ?? b.startedAt ?? b.updatedAt).localeCompare(a.endedAt ?? a.startedAt ?? a.updatedAt));
 }
 
 function parseAnyManifest(raw: Record<string, unknown> | null): StoredSessionSummary | null {
@@ -239,18 +239,28 @@ export async function createSessionExport(
   };
 }
 
-async function hydrateStateFromStoredSessions(state: PlayLensState, options: SessionStoreOptions): Promise<PlayLensState> {
+export async function hydrateStateFromStoredSessions(state: PlayLensState, options: SessionStoreOptions): Promise<PlayLensState> {
   const summaries = await listSessions(options);
   const existingSessionIds = new Set(state.sessions.map((session) => session.id));
   const existingEventIds = new Set(state.events.map((event) => event.id));
   const existingTaskIds = new Set(state.tasks.map((task) => task.id));
+  const existingIssueIds = new Set(state.issues.map((issue) => issue.id));
   const hydratedSessions: Session[] = [];
   const hydratedTasks: Task[] = [];
   const hydratedEvents: TimelineEvent[] = [];
+  const hydratedIssues: Issue[] = [];
 
   for (const summary of summaries) {
     const taskId = (summary.taskId ?? `task-${sanitizePathPart(summary.id)}`) as TaskId;
     const events = (await readSessionEvents(summary.id, options)).map((event, index) => normalizeStoredEvent(event, summary.id, taskId, index));
+    const derivedUrl = summary.currentUrl ?? deriveCurrentUrl(events);
+    const derivedDuration = deriveDurationMs(summary.startedAt, summary.endedAt, events);
+    const derivedViewport = deriveViewport(events);
+    const issues = events
+      .filter((event) => event.kind === "issue.detected")
+      .map((event) => normalizeStoredIssue(event, summary.id, taskId))
+      .filter((issue) => !existingIssueIds.has(issue.id));
+    const issueIds = issues.map((issue) => issue.id);
 
     if (!existingSessionIds.has(summary.id)) {
       hydratedSessions.push({
@@ -262,7 +272,7 @@ async function hydrateStateFromStoredSessions(state: PlayLensState, options: Ses
           name: normalizeBrowserName(summary.browserName),
           version: "unknown",
           headless: false,
-          viewport: { width: 0, height: 0 }
+          viewport: derivedViewport
         },
         environment: {
           os: "unknown",
@@ -271,9 +281,10 @@ async function hydrateStateFromStoredSessions(state: PlayLensState, options: Ses
         },
         startedAt: summary.startedAt ?? summary.updatedAt,
         endedAt: summary.endedAt,
-        currentUrl: summary.currentUrl,
+        durationMs: derivedDuration,
+        currentUrl: derivedUrl,
         eventIds: events.map((event) => event.id),
-        issueIds: [],
+        issueIds,
         metricIds: []
       });
     }
@@ -296,28 +307,60 @@ async function hydrateStateFromStoredSessions(state: PlayLensState, options: Ses
         tags: ["recorded"],
         summary: {
           browser: normalizeBrowserName(summary.browserName),
-          currentUrl: summary.currentUrl,
+          currentUrl: derivedUrl,
           eventCount: summary.eventCount,
-          issueCount: summary.issueCount ?? 0,
+          issueCount: Math.max(summary.issueCount ?? 0, issueIds.length),
+          durationMs: derivedDuration,
           failedRequestCount: events.filter((event) => event.kind === "network.response" && Number(event.request?.status ?? event.data.status) >= 400).length
         }
       });
     }
 
     hydratedEvents.push(...events.filter((event) => !existingEventIds.has(event.id)));
+    hydratedIssues.push(...issues);
   }
 
-  if (hydratedSessions.length === 0 && hydratedTasks.length === 0 && hydratedEvents.length === 0) return state;
+  if (hydratedSessions.length === 0 && hydratedTasks.length === 0 && hydratedEvents.length === 0 && hydratedIssues.length === 0) return state;
   return {
     ...state,
     tasks: [...state.tasks, ...hydratedTasks],
     sessions: [...state.sessions, ...hydratedSessions],
-    events: [...state.events, ...hydratedEvents]
+    events: [...state.events, ...hydratedEvents],
+    issues: [...state.issues, ...hydratedIssues],
+    selectedTaskId: state.tasks.length > 0 ? state.selectedTaskId : hydratedTasks[0]?.id ?? state.selectedTaskId
   };
 }
 
+function deriveCurrentUrl(events: TimelineEvent[]): string | undefined {
+  const reversed = [...events].reverse();
+  return reversed.find((event) => (event.kind === "page.navigated" || event.kind === "action.completed") && event.url)?.url
+    ?? reversed.find((event) => event.url && !event.request)?.url
+    ?? reversed.find((event) => event.request?.url)?.request?.url;
+}
+
+function deriveDurationMs(startedAt: string, endedAt: string | undefined, events: TimelineEvent[]): number | undefined {
+  if (startedAt && endedAt) return Math.max(0, new Date(endedAt).getTime() - new Date(startedAt).getTime());
+  if (events.length < 2) return undefined;
+  return Math.max(0, new Date(events.at(-1)!.timestamp).getTime() - new Date(events[0].timestamp).getTime());
+}
+
+function deriveViewport(events: TimelineEvent[]): Session["browser"]["viewport"] {
+  const viewport = events.find((event) => {
+    const candidate = event.data.viewport;
+    return candidate && typeof candidate === "object" && typeof (candidate as { width?: unknown }).width === "number" && typeof (candidate as { height?: unknown }).height === "number";
+  })?.data.viewport as { width: number; height: number } | undefined;
+  return viewport ?? { width: 0, height: 0 };
+}
+
 function normalizeStoredEvent(raw: TimelineEvent, sessionId: SessionId, taskId: TaskId, index: number): TimelineEvent {
-  const data = raw.data && typeof raw.data === "object" ? raw.data : {};
+  const embedded = raw.data && typeof raw.data === "object" && typeof (raw.data as { kind?: unknown }).kind === "string"
+    ? raw.data as Partial<TimelineEvent> & { data?: Record<string, unknown> }
+    : undefined;
+  const data = embedded?.data && typeof embedded.data === "object"
+    ? embedded.data
+    : raw.data && typeof raw.data === "object"
+      ? raw.data
+      : {};
   const requestData = (data.request && typeof data.request === "object" ? data.request : data) as Record<string, unknown>;
   const method = typeof requestData.method === "string" ? requestData.method : raw.request?.method;
   const url = typeof requestData.url === "string" ? requestData.url : raw.request?.url;
@@ -327,16 +370,16 @@ function normalizeStoredEvent(raw: TimelineEvent, sessionId: SessionId, taskId: 
     id: (raw.id ?? `event-${sanitizePathPart(sessionId)}-${index}`) as EventId,
     sessionId: (raw.sessionId ?? sessionId) as SessionId,
     taskId: (raw.taskId ?? taskId) as TaskId,
-    kind: (raw.kind ?? "terminal.output") as EventKind,
-    severity: (raw.severity ?? "info") as EventSeverity,
-    title: raw.title ?? raw.kind ?? "Recorded event",
-    message: raw.message ?? "",
-    timestamp: raw.timestamp ?? now({}),
-    durationMs: raw.durationMs,
-    source: raw.source,
-    url: raw.url ?? url,
-    locator: raw.locator,
-    request: raw.request ?? (method && url
+    kind: (embedded?.kind ?? raw.kind ?? "terminal.output") as EventKind,
+    severity: (embedded?.severity ?? raw.severity ?? "info") as EventSeverity,
+    title: embedded?.title ?? raw.title ?? raw.kind ?? "Recorded event",
+    message: embedded?.message ?? raw.message ?? "",
+    timestamp: embedded?.timestamp ?? raw.timestamp ?? now({}),
+    durationMs: embedded?.durationMs ?? raw.durationMs,
+    source: embedded?.source ?? raw.source,
+    url: embedded?.url ?? raw.url ?? url,
+    locator: embedded?.locator ?? raw.locator,
+    request: embedded?.request ?? raw.request ?? (method && url
       ? {
           method,
           url,
@@ -349,6 +392,41 @@ function normalizeStoredEvent(raw: TimelineEvent, sessionId: SessionId, taskId: 
     relatedIssueIds: Array.isArray(raw.relatedIssueIds) ? (raw.relatedIssueIds as IssueId[]) : [],
     data
   };
+}
+
+function normalizeStoredIssue(event: TimelineEvent, sessionId: SessionId, taskId: TaskId): Issue {
+  const data = event.data ?? {};
+  const status = Number(data.responseStatus ?? data.status ?? event.request?.status);
+  const category = typeof data.category === "string" ? data.category : status >= 400 ? "network" : "test";
+  const evidence: Issue["evidence"] = [
+    { label: "Event", value: event.message || event.title, eventId: event.id }
+  ];
+  if (Number.isFinite(status)) evidence.push({ label: "Status", value: String(status), eventId: event.id });
+  if (Array.isArray(data.consoleMessages) && data.consoleMessages.length) {
+    evidence.push({ label: "Console", value: String(data.consoleMessages[0]), eventId: event.id });
+  }
+
+  return {
+    id: (typeof data.issueId === "string" ? data.issueId : `issue-${sanitizePathPart(event.id)}`) as IssueId,
+    taskId,
+    sessionId,
+    title: event.title || "Recorded issue",
+    description: event.message || "PlayLens detected an issue in the recorded session.",
+    category: normalizeIssueCategory(category),
+    severity: event.severity === "critical" ? "critical" : event.severity === "error" ? "high" : "medium",
+    status: "open",
+    detectedAt: event.timestamp,
+    source: event.source,
+    eventIds: [event.id],
+    evidence,
+    suggestedFixes: []
+  };
+}
+
+function normalizeIssueCategory(value: string): IssueCategory {
+  return value === "network" || value === "console" || value === "dom" || value === "accessibility" || value === "performance" || value === "system" || value === "agent"
+    ? value
+    : "test";
 }
 
 function normalizeSessionStatus(value: string): Session["status"] {

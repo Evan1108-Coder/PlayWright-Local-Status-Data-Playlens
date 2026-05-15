@@ -1,4 +1,4 @@
-import type { AppState } from "../data/types";
+import type { PlayLensState } from "../state/appState";
 
 export interface ApiHealth {
   ok: boolean;
@@ -39,11 +39,18 @@ export async function getApiHealth(): Promise<ApiClientResult<ApiHealth>> {
   return { ok: true, data: { ...result.data, ok: result.data.ok ?? result.data.status === "ok" } };
 }
 
-export async function getStoredState(): Promise<ApiClientResult<AppState>> {
-  const result = await getJson<AppState | { status: "ok"; state: AppState }>("/api/state");
-  if (!result.ok || !result.data) return result as ApiClientResult<AppState>;
+export async function getStoredState(): Promise<ApiClientResult<PlayLensState>> {
+  const result = await getJson<PlayLensState | { status: "ok"; state: PlayLensState }>("/api/state");
+  if (!result.ok || !result.data) return result as ApiClientResult<PlayLensState>;
   if ("state" in result.data) return { ok: true, data: result.data.state };
   return { ok: true, data: result.data };
+}
+
+export async function saveStoredState(state: PlayLensState): Promise<ApiClientResult<{ savedAt: string; snapshotPath: string }>> {
+  return postJson<{ status: "ok"; savedAt: string; snapshotPath: string }, { savedAt: string; snapshotPath: string }>("/api/state", state, (data) => ({
+    savedAt: data.savedAt,
+    snapshotPath: data.snapshotPath
+  }));
 }
 
 export async function getStoredSessions(): Promise<ApiClientResult<StoredSessionSummary[]>> {
@@ -71,6 +78,29 @@ async function getJson<T>(path: string): Promise<ApiClientResult<T>> {
       return { ok: false, error: `${response.status} ${response.statusText}` };
     }
     return { ok: true, data: (await response.json()) as T };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Backend is not reachable"
+    };
+  }
+}
+
+async function postJson<T, R = T>(path: string, body: unknown, map?: (data: T) => R): Promise<ApiClientResult<R>> {
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+    if (!response.ok) {
+      return { ok: false, error: `${response.status} ${response.statusText}` };
+    }
+    const data = (await response.json()) as T;
+    return { ok: true, data: map ? map(data) : (data as unknown as R) };
   } catch (error) {
     return {
       ok: false,

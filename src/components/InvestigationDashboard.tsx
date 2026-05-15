@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -30,6 +30,7 @@ interface InvestigationDashboardProps {
   selectedTask?: Task;
   highlightTargetId: string | null;
   onOpenSettings: () => void;
+  aiAvailable: boolean;
 }
 
 type BadgeTone = "info" | "step" | "nav" | "action" | "req" | "resp" | "console" | "perf" | "issue";
@@ -78,7 +79,7 @@ function formatDuration(ms?: number): string {
 }
 
 function shortPath(url?: string): string {
-  if (!url) return "/checkout/payment";
+  if (!url) return "--";
   try {
     return new URL(url).pathname;
   } catch {
@@ -86,7 +87,7 @@ function shortPath(url?: string): string {
   }
 }
 
-export function InvestigationDashboard({ state, selectedTask, highlightTargetId }: InvestigationDashboardProps) {
+export function InvestigationDashboard({ state, selectedTask, highlightTargetId, aiAvailable }: InvestigationDashboardProps) {
   const taskEvents = state.events.filter((e) => e.taskId === selectedTask?.id);
   const taskIssues = state.issues.filter((i) => i.taskId === selectedTask?.id);
   const metrics = state.systemMetrics.filter((m) => m.taskId === selectedTask?.id);
@@ -97,13 +98,24 @@ export function InvestigationDashboard({ state, selectedTask, highlightTargetId 
   const startTime = taskEvents[0]?.timestamp ?? session?.startedAt;
   const activeTime = actionEvent ? formatOffset(actionEvent.timestamp, startTime) : "00:00.000";
 
+  if (!selectedTask || !session || taskEvents.length === 0) {
+    return (
+      <section className="observability-console empty-dashboard" aria-label="PlayLens browser investigation dashboard">
+        <div className="empty-dashboard-message">
+          <h2>No active recording</h2>
+          <p>Start a Playwright command through PlayLens or point the backend at a folder with recorded `.playlens/sessions`. Until then, the dashboard stays empty instead of showing demo values.</p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="observability-console" aria-label="PlayLens browser investigation dashboard">
       <TimelinePanel events={taskEvents} startTime={startTime} highlightTargetId={highlightTargetId} />
       <ReplayPanel selectedTask={selectedTask} session={session} selectedIssue={selectedIssue} activeTime={activeTime} events={taskEvents} />
       <CausalPanel events={taskEvents} issue={selectedIssue} actionEvent={actionEvent} startTime={startTime} />
       <MetricsPanel metrics={metrics} networkEvents={networkEvents} events={taskEvents} />
-      <AICompactPanel state={state} issue={selectedIssue} />
+      <AICompactPanel state={state} issue={selectedIssue} aiAvailable={aiAvailable} />
       <TerminalPanel events={taskEvents} />
       <GraphPanel events={taskEvents} issue={selectedIssue} actionEvent={actionEvent} startTime={startTime} />
     </section>
@@ -143,52 +155,45 @@ function ReplayPanel({ selectedTask, session, selectedIssue, activeTime, events 
   activeTime: string;
   events: TimelineEvent[];
 }) {
-  const currentUrl = selectedTask?.summary.currentUrl ?? "https://demo.shop.test/checkout/payment";
+  const [activeTab, setActiveTab] = useState("Replay");
+  const domEvent = [...events].reverse().find((event) => event.kind === "dom.snapshot");
+  const consoleEvents = events.filter((event) => event.kind === "console.message");
+  const networkEvents = events.filter((event) => event.request);
+  const terminalEvents = events.filter((event) => event.kind === "terminal.output");
+  const currentUrl = selectedTask?.summary.currentUrl ?? session?.currentUrl ?? events.find((event) => event.url)?.url ?? events.find((event) => event.request?.url)?.request?.url;
   const viewport = session?.browser.viewport;
+  const beforeText = typeof domEvent?.data.beforeText === "string" ? domEvent.data.beforeText : "";
+  const afterText = typeof domEvent?.data.afterText === "string" ? domEvent.data.afterText : "";
 
   return (
     <section className="console-panel replay-console">
       <div className="console-tabs">
-        {['Replay', 'DOM', 'Console', 'Network', 'Logs'].map((tab, index) => <button key={tab} className={index === 0 ? 'active' : ''}>{tab}</button>)}
+        {["Replay", "DOM", "Console", "Network", "Logs"].map((tab) => (
+          <button key={tab} className={activeTab === tab ? "active" : ""} onClick={() => setActiveTab(tab)}>{tab}</button>
+        ))}
       </div>
       <div className="replay-toolbar">
-        <button><ChevronLeft size={13} /></button>
-        <button><ChevronRight size={13} /></button>
-        <button><RotateCcw size={12} /></button>
-        <div className="url-field">{currentUrl}</div>
-        <button><Smartphone size={13} /></button>
-        <button>{viewport ? `${viewport.width} x ${viewport.height}` : '1280 x 800'} <ChevronDown size={12} /></button>
-        <button><Monitor size={13} /></button>
+        <button title="Previous event"><ChevronLeft size={13} /></button>
+        <button title="Next event"><ChevronRight size={13} /></button>
+        <button title="Reload view"><RotateCcw size={12} /></button>
+        <div className="url-field">{currentUrl ?? "No URL captured"}</div>
+        <button title="Device"><Smartphone size={13} /></button>
+        <button>{viewport?.width ? `${viewport.width} x ${viewport.height}` : "--"} <ChevronDown size={12} /></button>
+        <button title="Desktop viewport"><Monitor size={13} /></button>
       </div>
       <div className="browser-canvas">
-        <div className="shop-page">
-          <div className="shop-header"><strong>DemoShop</strong><span>Secure checkout</span></div>
-          <div className="checkout-steps"><span>Shipping</span><strong>Payment</strong><span>Review</span></div>
-          <main className="payment-page">
-            <section className="payment-form">
-              <h2>Payment</h2>
-              <p>Complete your purchase</p>
-              {selectedIssue ? (
-                <div className="payment-alert"><AlertTriangle size={14} /> <strong>We couldn't process your payment</strong><span>Error code 500</span></div>
-              ) : null}
-              <div className="form-grid">
-                <label>Card number<div>4242 4242 4242 4242 <b>VISA</b></div></label>
-                <label>Expiry<div>12 / 24</div></label>
-                <label>CVC<div>123</div></label>
-                <label>Name on card<div>John Doe</div></label>
-              </div>
-            </section>
-            <aside className="order-card">
-              <h3>Order summary</h3>
-              <p><span>Subtotal</span><strong>$129.99</strong></p>
-              <p><span>Shipping</span><strong>$5.99</strong></p>
-              <p><span>Tax</span><strong>$10.40</strong></p>
-              <p className="order-total"><span>Total</span><strong>$146.38</strong></p>
-              <button>Pay now</button>
-              <small>button[role='button'] getByRole('button', &#123; name: 'Pay now' &#125;)</small>
-            </aside>
-          </main>
-        </div>
+        {activeTab === "Replay" ? (
+          <div className="real-replay-empty">
+            <Monitor size={28} />
+            <h3>No browser screenshot artifact captured</h3>
+            <p>PlayLens has real event, network, console, terminal, and DOM data for this run. A visual replay will appear here when the recorder captures page screenshots or video frames.</p>
+            {selectedIssue ? <strong>{selectedIssue.title}</strong> : null}
+          </div>
+        ) : null}
+        {activeTab === "DOM" ? <EvidenceText title="DOM snapshot after selected event" value={afterText || beforeText} empty="No DOM snapshot captured in this recording." /> : null}
+        {activeTab === "Console" ? <EvidenceList events={consoleEvents} empty="No browser console messages captured." /> : null}
+        {activeTab === "Network" ? <NetworkEvidence events={networkEvents} /> : null}
+        {activeTab === "Logs" ? <EvidenceList events={terminalEvents.length ? terminalEvents : events} empty="No terminal output captured." /> : null}
       </div>
       <div className="replay-footer">
         <div className="transport"><ChevronLeft size={12} /><Play size={12} /><ChevronRight size={12} /></div>
@@ -197,6 +202,51 @@ function ReplayPanel({ selectedTask, session, selectedIssue, activeTime, events 
         <span>1x</span><Maximize2 size={13} />
       </div>
     </section>
+  );
+}
+
+function EvidenceText({ title, value, empty }: { title: string; value: string; empty: string }) {
+  return (
+    <div className="evidence-pane">
+      <h3>{title}</h3>
+      {value ? <pre>{value}</pre> : <p>{empty}</p>}
+    </div>
+  );
+}
+
+function EvidenceList({ events, empty }: { events: TimelineEvent[]; empty: string }) {
+  return (
+    <div className="evidence-pane">
+      {events.length ? events.map((event) => (
+        <article key={event.id} className="evidence-row">
+          <time>{formatClock(event.timestamp)}</time>
+          <strong>{event.title}</strong>
+          <p>{event.message}</p>
+        </article>
+      )) : <p>{empty}</p>}
+    </div>
+  );
+}
+
+function NetworkEvidence({ events }: { events: TimelineEvent[] }) {
+  return (
+    <div className="evidence-pane">
+      {events.length ? (
+        <table className="evidence-table">
+          <thead><tr><th>Method</th><th>URL</th><th>Status</th><th>Duration</th></tr></thead>
+          <tbody>
+            {events.map((event) => (
+              <tr key={event.id}>
+                <td>{event.request?.method ?? "--"}</td>
+                <td>{event.request?.url ?? event.url ?? "--"}</td>
+                <td>{event.request?.status ?? "--"}</td>
+                <td>{formatDuration(event.request?.durationMs ?? event.durationMs)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : <p>No network requests captured.</p>}
+    </div>
   );
 }
 
@@ -210,13 +260,13 @@ function CausalPanel({ events, issue, actionEvent, startTime }: { events: Timeli
         <span>Selected Action</span>
         <strong>{actionEvent?.title ?? "No action selected"}<time>{actionEvent ? formatOffset(actionEvent.timestamp, startTime) : "--"}</time></strong>
         <dl>
-          <dt>Source</dt><dd>{issue?.source ? `${issue.source.filePath}:${issue.source.line}` : actionEvent?.source ? `${actionEvent.source.filePath}:${actionEvent.source.line}` : "checkout.spec.ts:42"}</dd>
-          <dt>Locator</dt><dd>{actionEvent?.locator ?? "getByRole('button', { name: 'Pay now' })"}</dd>
-          <dt>Element</dt><dd>&lt;button class=&quot;btn primary&quot;&gt;Pay now&lt;/button&gt;</dd>
+          <dt>Source</dt><dd>{issue?.source ? `${issue.source.filePath}:${issue.source.line ?? "--"}` : actionEvent?.source ? `${actionEvent.source.filePath}:${actionEvent.source.line ?? "--"}` : "--"}</dd>
+          <dt>Locator</dt><dd>{actionEvent?.locator ?? "--"}</dd>
+          <dt>URL</dt><dd>{actionEvent?.url ?? actionEvent?.request?.url ?? "--"}</dd>
         </dl>
       </div>
-      <StatePreview title="Before State" compact />
-      <StatePreview title="After State" failed={Boolean(issue)} />
+      <StatePreview title="Before State" event={events.find((event) => event.kind === "dom.snapshot")} field="beforeText" />
+      <StatePreview title="After State" event={events.find((event) => event.kind === "dom.snapshot")} field="afterText" failed={Boolean(issue)} />
       <div className="related-list">
         <h3>Related Artifacts</h3>
         {artifacts.map((event) => {
@@ -235,15 +285,13 @@ function CausalPanel({ events, issue, actionEvent, startTime }: { events: Timeli
   );
 }
 
-function StatePreview({ title, compact, failed }: { title: string; compact?: boolean; failed?: boolean }) {
+function StatePreview({ title, event, field, failed }: { title: string; event?: TimelineEvent; field: "beforeText" | "afterText"; failed?: boolean }) {
+  const value = typeof event?.data[field] === "string" ? event.data[field] as string : "";
   return (
     <div className="state-preview">
       <h3>{title}</h3>
-      <div className={`state-thumb ${failed ? 'failed' : ''} ${compact ? 'compact' : ''}`}>
-        <div className="mini-shop-header" />
-        <div className="mini-layout"><span /><span /><span /></div>
-        {failed ? <div className="mini-alert" /> : null}
-        <button />
+      <div className={`state-thumb real-state-thumb ${failed ? "failed" : ""}`}>
+        {value ? <pre>{value}</pre> : <span>No DOM {field === "beforeText" ? "before" : "after"} snapshot captured.</span>}
       </div>
     </div>
   );
@@ -260,7 +308,9 @@ function MetricsPanel({ metrics, networkEvents, events }: { metrics: PlayLensSta
   );
 }
 
-function AICompactPanel({ state, issue }: { state: PlayLensState; issue?: PlayLensState["issues"][number] }) {
+function AICompactPanel({ state, issue, aiAvailable }: { state: PlayLensState; issue?: PlayLensState["issues"][number]; aiAvailable: boolean }) {
+  const [prompt, setPrompt] = useState("");
+  const aiEnabled = aiAvailable && state.aiAgent.enabled;
   const prompts = [
     issue ? "Why did the payment request fail?" : "What changed in this run?",
     "Show all errors and related requests",
@@ -271,10 +321,13 @@ function AICompactPanel({ state, issue }: { state: PlayLensState; issue?: PlayLe
     <section className="console-panel ai-console">
       <div className="drawer-tabs compact-tabs"><button className="active">AI Chat <span>BETA</span></button><button>Exports</button><button>Plugins</button></div>
       <div className="ai-prompt-stack">
-        <p>Ask about this session...</p>
-        {prompts.map((prompt) => <button key={prompt}>{prompt}</button>)}
+        <p>{aiEnabled ? "Ask about this session..." : "AI is unavailable until a MiniMax API key is configured."}</p>
+        {prompts.map((item) => <button key={item} disabled={!aiEnabled} onClick={() => setPrompt(item)}>{item}</button>)}
       </div>
-      <div className="ai-chat-input compact-input"><input readOnly placeholder="Ask about this session..." /><button><Send size={14} /></button></div>
+      <div className={`ai-chat-input compact-input ${!aiEnabled ? "ai-disabled-input" : ""}`}>
+        <input value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={aiEnabled ? "Ask about this session..." : "MiniMax API key missing"} />
+        <button disabled={!aiEnabled}><Send size={14} /></button>
+      </div>
     </section>
   );
 }
@@ -301,33 +354,47 @@ function TerminalPanel({ events }: { events: TimelineEvent[] }) {
 }
 
 function GraphPanel({ events, issue, actionEvent, startTime }: { events: TimelineEvent[]; issue?: PlayLensState["issues"][number]; actionEvent?: TimelineEvent; startTime?: string }) {
+  const [view, setView] = useState<"Graph" | "Table">("Graph");
   const request = events.find((event) => event.request);
   const response = events.find((event) => (event.request?.status ?? 0) >= 400) ?? request;
   const consoleEvent = events.find((event) => event.kind === "console.message") ?? events.find((event) => event.severity === "warning");
   const nodes = [
-    { tone: "action", title: "Action", body: actionEvent?.title ?? "Click Pay now", meta: actionEvent ? formatOffset(actionEvent.timestamp, startTime) : "00:15.984" },
-    { tone: "request", title: "Request", body: request?.request ? `${request.request.method} ${shortPath(request.request.url)}` : "POST /api/payment", meta: request ? formatDuration(request.request?.durationMs ?? request.durationMs) : "412ms" },
-    { tone: "response", title: "Response", body: response?.request?.status ? `${response.request.status} Internal Server Error` : "500 Internal Server Error", meta: response ? formatOffset(response.timestamp, startTime) : "00:16.516" },
-    { tone: "console", title: "Console Error", body: consoleEvent?.message ?? "TypeError: Cannot read properties", meta: consoleEvent ? formatOffset(consoleEvent.timestamp, startTime) : "00:16.602" },
-    { tone: "issue", title: "Issue", body: issue?.title ?? "Payment failed with 500", meta: issue ? formatOffset(issue.detectedAt, startTime) : "00:17.240" },
-  ];
+    actionEvent ? { tone: "action", title: "Action", body: actionEvent.title, meta: formatOffset(actionEvent.timestamp, startTime) } : undefined,
+    request ? { tone: "request", title: "Request", body: request.request ? `${request.request.method} ${shortPath(request.request.url)}` : request.title, meta: formatDuration(request.request?.durationMs ?? request.durationMs) } : undefined,
+    response ? { tone: "response", title: "Response", body: response.request?.status ? `${response.request.status} ${response.title}` : response.title, meta: formatOffset(response.timestamp, startTime) } : undefined,
+    consoleEvent ? { tone: "console", title: "Console Error", body: consoleEvent.message, meta: formatOffset(consoleEvent.timestamp, startTime) } : undefined,
+    issue ? { tone: "issue", title: "Issue", body: issue.title, meta: formatOffset(issue.detectedAt, startTime) } : undefined,
+  ].filter((node): node is { tone: string; title: string; body: string; meta: string } => Boolean(node));
 
   return (
     <section className="console-panel graph-console">
-      <div className="drawer-tabs compact-tabs"><button className="active">Graph</button><button>Table</button></div>
-      <div className="graph-toolbar"><button>Depth 2 <ChevronDown size={12} /></button><span>100%</span><Maximize2 size={13} /></div>
-      <div className="causal-graph">
-        {nodes.map((node, index) => (
-          <div className="graph-node-wrap" key={node.title}>
-            <article className={`graph-node ${node.tone}`}>
-              <span>{node.title}</span>
-              <strong>{node.body}</strong>
-              <em>{node.meta}</em>
-            </article>
-            {index < nodes.length - 1 ? <ArrowRight className="graph-edge" size={18} /> : null}
-          </div>
-        ))}
+      <div className="drawer-tabs compact-tabs">
+        {(["Graph", "Table"] as const).map((tab) => <button key={tab} className={view === tab ? "active" : ""} onClick={() => setView(tab)}>{tab}</button>)}
       </div>
+      <div className="graph-toolbar"><button>Depth 2 <ChevronDown size={12} /></button><span>100%</span><Maximize2 size={13} /></div>
+      {view === "Graph" ? (
+        <div className="causal-graph">
+          {nodes.length ? nodes.map((node, index) => (
+            <div className="graph-node-wrap" key={`${node.title}-${index}`}>
+              <article className={`graph-node ${node.tone}`}>
+                <span>{node.title}</span>
+                <strong>{node.body}</strong>
+                <em>{node.meta}</em>
+              </article>
+              {index < nodes.length - 1 ? <ArrowRight className="graph-edge" size={18} /> : null}
+            </div>
+          )) : <div className="empty-console">No causal graph data captured.</div>}
+        </div>
+      ) : (
+        <div className="graph-table-wrap">
+          <table className="evidence-table">
+            <thead><tr><th>Type</th><th>Detail</th><th>Time</th></tr></thead>
+            <tbody>
+              {nodes.map((node, index) => <tr key={`${node.title}-${index}`}><td>{node.title}</td><td>{node.body}</td><td>{node.meta}</td></tr>)}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }
@@ -347,10 +414,12 @@ function CpuMemoryChart({ metrics }: { metrics: PlayLensState["systemMetrics"] }
   return (
     <div className="chart-panel compact-chart">
       <h3><Cpu size={12} /> CPU & Memory <span>{latestCpu}% {(latestMem / 1024).toFixed(1)} GB</span></h3>
-      <svg className="chart-svg" viewBox="0 0 240 86" preserveAspectRatio="none">
-        <polyline points={cpuPoints} fill="none" stroke="#f97316" strokeWidth="2" strokeLinejoin="round" />
-        <polyline points={memPoints} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinejoin="round" />
-      </svg>
+      {metrics.length ? (
+        <svg className="chart-svg" viewBox="0 0 240 86" preserveAspectRatio="none">
+          <polyline points={cpuPoints} fill="none" stroke="#f97316" strokeWidth="2" strokeLinejoin="round" />
+          <polyline points={memPoints} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinejoin="round" />
+        </svg>
+      ) : <div className="mini-empty">No system samples captured.</div>}
     </div>
   );
 }
@@ -361,7 +430,7 @@ function NetworkWaterfall({ events }: { events: TimelineEvent[] }) {
     <div className="chart-panel compact-chart">
       <h3><Network size={12} /> Network Waterfall</h3>
       <div className="waterfall-list">
-        {events.slice(0, 5).map((event) => {
+        {events.length ? events.slice(0, 5).map((event) => {
           const dur = event.request?.durationMs ?? event.durationMs ?? 0;
           const pct = Math.max(14, (dur / maxDuration) * 100);
           const status = event.request?.status;
@@ -373,7 +442,7 @@ function NetworkWaterfall({ events }: { events: TimelineEvent[] }) {
               <div className="waterfall-bar-wrap"><div className={`waterfall-bar ${barCls}`} style={{ width: `${pct}%` }}>{formatDuration(dur)}</div></div>
             </div>
           );
-        })}
+        }) : <div className="mini-empty">No network data.</div>}
       </div>
     </div>
   );

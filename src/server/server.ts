@@ -7,6 +7,7 @@ import {
   createSession,
   createSessionExport,
   getStoragePaths,
+  hydrateStateFromStoredSessions,
   initializeStorage,
   listSessions,
   loadAppStateSnapshot,
@@ -39,13 +40,14 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
 
       if (request.method === "GET" && url.pathname === "/api/health") {
         await initializeStorage(storeOptions);
+        const paths = getStoragePaths(storeOptions);
         const checkedAt = new Date().toISOString();
         sendJson<HealthResponse>(response, 200, {
           ok: true,
           status: "ok",
           service: "playlens-backend",
           storageReady: true,
-          storageRoot: getStoragePaths(storeOptions).rootDir,
+          storageRoot: paths.sessionsDir,
           version: "0.1.0",
           timestamp: checkedAt,
           checkedAt
@@ -54,7 +56,7 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
       }
 
       if (request.method === "GET" && url.pathname === "/api/state") {
-        const state = await loadOrCreateState(storeOptions);
+        const state = await hydrateStateFromStoredSessions(await loadOrCreateState(storeOptions), storeOptions);
         sendJson<StateResponse>(response, 200, { status: "ok", state });
         return;
       }
@@ -135,6 +137,9 @@ export async function startPlayLensServer(options: PlayLensServerOptions = {}): 
 
 async function loadOrCreateState(storeOptions: { projectRoot?: string }): Promise<PlayLensState> {
   const existing = await loadAppStateSnapshot(storeOptions);
+  if (process.env.PLAYLENS_STORAGE_DIR) {
+    return createRecordingBackedState(existing);
+  }
   if (existing) return existing;
 
   if (process.env.PLAYLENS_DEMO_MODE === "1") {
@@ -147,6 +152,23 @@ async function loadOrCreateState(storeOptions: { projectRoot?: string }): Promis
   const state = createEmptyAppState();
   await saveAppStateSnapshot(state, storeOptions);
   return state;
+}
+
+function createRecordingBackedState(existing: PlayLensState | null): PlayLensState {
+  const empty = createEmptyAppState();
+  if (!existing) return empty;
+  return {
+    ...empty,
+    settingsGroups: existing.settingsGroups,
+    projectScopes: existing.projectScopes,
+    auditLog: existing.auditLog,
+    aiAgent: existing.aiAgent,
+    agent: existing.aiAgent,
+    uploadedFiles: existing.uploadedFiles,
+    lastUpdatedAt: existing.lastUpdatedAt,
+    selectedTaskId: empty.selectedTaskId,
+    system: empty.system
+  };
 }
 
 async function seedSessionManifestsFromState(state: PlayLensState, storeOptions: { projectRoot?: string }): Promise<void> {

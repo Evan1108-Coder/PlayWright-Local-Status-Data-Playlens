@@ -437,9 +437,9 @@ export function AIAgentPanel({
           rows={3}
           style={styles.textarea}
           aria-label="Message AI operator"
-          disabled={!aiAvailable}
+          placeholder={aiAvailable ? "Ask the AI operator about this session..." : "MiniMax API key missing. You can type here, but the agent cannot respond until the key is configured."}
         />
-        <button type="button" onClick={askAgent} style={{ ...styles.askButton, ...(!aiAvailable ? styles.disabledButton : undefined) }} disabled={isThinking || !aiAvailable}>
+        <button type="button" onClick={askAgent} style={{ ...styles.askButton, ...(!aiAvailable ? styles.disabledButton : undefined) }} disabled={isThinking}>
           {isThinking ? <Loader2 size={15} /> : <SlidersHorizontal size={15} />}
           Ask Agent
         </button>

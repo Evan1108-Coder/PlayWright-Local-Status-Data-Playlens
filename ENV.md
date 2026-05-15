@@ -49,6 +49,8 @@ Override the session storage directory. Used by both the CLI recorder and backen
 
 - **Type:** Path
 - **Default:** `.playlens/sessions` (project-local)
+- **Dashboard behavior:** When set on the backend, `/api/state` is hydrated from the real recorded sessions in this folder. Task/session/event/issue data comes from that folder, while settings and AI preferences can still be saved locally.
+- **Example:** `PLAYLENS_STORAGE_DIR="/Users/me/project/.playlens/sessions" npm run api`
 
 ### `PLAYLENS_DEMO_MODE`
 
