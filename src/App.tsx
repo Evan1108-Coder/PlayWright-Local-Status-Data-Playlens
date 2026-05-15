@@ -4,9 +4,11 @@ import {
   Chrome,
   Clock,
   Database,
+  Download,
   Gauge,
   Globe,
   LayoutDashboard,
+  MoreVertical,
   Search,
   Settings,
   ShieldCheck,
@@ -64,7 +66,7 @@ export function App() {
     <div className="app-shell">
       <aside className="side-nav" aria-label="Primary navigation">
         <div className="brand-mark">
-          <div className="brand-icon">PL</div>
+          <div className="brand-icon">D</div>
         </div>
 
         <nav className="nav-stack">
@@ -106,16 +108,16 @@ export function App() {
 
           <div className="info-badges">
             {session?.browser && (
-              <span className="info-badge"><Chrome size={11} /> {session.browser.name} {session.browser.version?.split(".")[0]}</span>
+              <span className="top-stat"><small>Browser</small><strong><Chrome size={12} /> {session.browser.name} {session.browser.version?.split(".")[0]}</strong></span>
             )}
             {selectedTask?.summary.durationMs && (
-              <span className="info-badge"><Clock size={11} /> {formatDuration(selectedTask.summary.durationMs)}</span>
+              <span className="top-stat"><small>Duration</small><strong><Clock size={12} /> {formatDuration(selectedTask.summary.durationMs)}</strong></span>
             )}
             {selectedTask?.summary.currentUrl && (
-              <span className="info-badge"><Globe size={11} /> {new URL(selectedTask.summary.currentUrl).pathname}</span>
+              <span className="top-stat wide"><small>URL</small><strong><Globe size={12} /> {new URL(selectedTask.summary.currentUrl).pathname}</strong></span>
             )}
             {taskIssueCount > 0 && (
-              <span className="info-badge"><AlertTriangle size={11} /> {taskIssueCount}</span>
+              <span className="top-stat danger"><small>Issues</small><strong><AlertTriangle size={12} /> {taskIssueCount}</strong></span>
             )}
           </div>
 
@@ -124,15 +126,22 @@ export function App() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search..."
+              placeholder="Search (⌘K)"
               aria-label="Search PlayLens"
             />
           </div>
 
           <div className="metric-strip">
-            <span><Gauge size={12} /> CPU {state.system.cpuPercent}%</span>
-            <span>Mem {state.system.memoryMb} MB</span>
+            <span className="metric-danger"><small>CPU</small><strong><Gauge size={12} /> {state.system.cpuPercent}%</strong></span>
+            <span><small>Memory</small><strong>{(state.system.memoryMb / 1024).toFixed(1)} GB</strong></span>
           </div>
+
+          <button className="top-action-button" type="button">
+            <Download size={13} /> Export
+          </button>
+          <button className="top-icon-button" type="button" aria-label="More actions">
+            <MoreVertical size={15} />
+          </button>
         </header>
 
         {query.trim().length > 0 && (
@@ -143,14 +152,16 @@ export function App() {
           />
         )}
 
-        <div className="workspace-grid">
-          <TaskRail
-            tasks={state.tasks}
-            selectedTaskId={state.selectedTaskId}
-            highlightTargetId={highlightTargetId}
-            onSelectTask={(taskId) => setState((current) => ({ ...current, selectedTaskId: taskId }))}
-            onRenameTask={(taskId, name) => runAction(appActions.renameTask, taskId, name)}
-          />
+        <div className={`workspace-grid ${activeView === "dashboard" ? "dashboard-mode" : ""}`}>
+          {activeView !== "dashboard" && (
+            <TaskRail
+              tasks={state.tasks}
+              selectedTaskId={state.selectedTaskId}
+              highlightTargetId={highlightTargetId}
+              onSelectTask={(taskId) => setState((current) => ({ ...current, selectedTaskId: taskId }))}
+              onRenameTask={(taskId, name) => runAction(appActions.renameTask, taskId, name)}
+            />
+          )}
 
           <section className="content-plane">
             {activeView === "dashboard" && (
@@ -172,14 +183,16 @@ export function App() {
               />
             )}
             {activeView === "agent" && (
-              <AIAgentPanel
-                mode={state.aiAgent.mode}
-                status={state.aiAgent.status === "waiting-for-approval" ? "paused" : state.aiAgent.status}
-                onPause={() => runAction(appActions.pauseAgent)}
-                onResume={() => runAction(appActions.resumeAgent)}
-                onStop={() => runAction(appActions.stopAgent)}
-                onClearHistory={() => runAction(appActions.clearAIChatHistory)}
-              />
+              <div className="console-page agent-console-page">
+                <AIAgentPanel
+                  mode={state.aiAgent.mode}
+                  status={state.aiAgent.status === "waiting-for-approval" ? "paused" : state.aiAgent.status}
+                  onPause={() => runAction(appActions.pauseAgent)}
+                  onResume={() => runAction(appActions.resumeAgent)}
+                  onStop={() => runAction(appActions.stopAgent)}
+                  onClearHistory={() => runAction(appActions.clearAIChatHistory)}
+                />
+              </div>
             )}
             {activeView === "data" && (
               <DataAccessPage state={state} />

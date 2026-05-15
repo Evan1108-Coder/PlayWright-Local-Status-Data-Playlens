@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { initProjectScope } from "../recorder/projectScope";
 import { runSupervisedCommand } from "../recorder/supervisor";
 import { RecorderStore } from "../recorder/storage";
+import { createSessionExport } from "../storage/sessionStore";
+import { createEmptyAppState } from "../state/appState";
 
 const tempRoot = mkdtempSync(join(tmpdir(), "playlens-recorder-"));
 const storageRoot = join(tempRoot, ".playlens", "sessions");
@@ -35,6 +37,11 @@ try {
   assert.ok(events.some((event) => event.kind === "terminal.output"));
   assert.ok(events.some((event) => event.kind === "playwright.detected"));
   assert.equal(sessions[0].manifest.status, "completed");
+
+  const exported = await createSessionExport("json", createEmptyAppState(), { projectRoot: tempRoot });
+  const exportedPayload = JSON.parse(exported.content) as { state: { sessions: unknown[]; events: Array<{ kind: string }> } };
+  assert.equal(exportedPayload.state.sessions.length, 1);
+  assert.ok(exportedPayload.state.events.some((event) => event.kind === "playwright.detected"));
 
   console.log("PlayLens recorder tests passed.");
 } finally {

@@ -23,6 +23,8 @@ export type PlayLensState = AppState & {
   agent: AppState["aiAgent"];
 };
 
+type NormalizableState = AppState & Partial<Pick<PlayLensState, "agent" | "selectedTaskId" | "system">>;
+
 export type UISearchResult = SearchResult & {
   targetId: string;
   view: AppView;
@@ -32,7 +34,7 @@ export function createInitialAppState(): PlayLensState {
   return normalizeState({
     ...structuredClone(initialAppState),
     selectedTaskId: initialAppState.tasks[0]?.id ?? "task-empty"
-  } as PlayLensState);
+  });
 }
 
 export function createEmptyAppState(): PlayLensState {
@@ -49,7 +51,7 @@ export function createEmptyAppState(): PlayLensState {
     systemMetrics: [],
     lastUpdatedAt: new Date().toISOString(),
     selectedTaskId: ("task-empty" as TaskId),
-  } as PlayLensState);
+  });
 }
 
 export const appActions = {
@@ -288,8 +290,8 @@ function updateAgentStatus(state: PlayLensState, status: PlayLensState["aiAgent"
   });
 }
 
-function normalizeState(state: PlayLensState): PlayLensState {
-  const selectedId = state.selectedTaskId ?? state.tasks[0]?.id;
+function normalizeState(state: NormalizableState): PlayLensState {
+  const selectedId = state.selectedTaskId ?? state.tasks[0]?.id ?? ("task-empty" as TaskId);
   const taskMetrics = state.systemMetrics.filter((m) => m.taskId === selectedId);
   const latestMetric = taskMetrics.at(-1) ?? state.systemMetrics.at(-1);
   return {

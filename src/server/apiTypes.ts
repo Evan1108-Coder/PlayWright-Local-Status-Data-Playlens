@@ -52,6 +52,7 @@ export interface StoredSessionSummary {
   status: Session["status"];
   browserName: Session["browser"]["name"];
   startedAt: ISODateTime;
+  endedAt?: ISODateTime;
   updatedAt: ISODateTime;
   currentUrl?: string;
   eventCount: number;

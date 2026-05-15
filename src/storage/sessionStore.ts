@@ -7,7 +7,7 @@ import type {
   SessionManifest,
   StoredSessionSummary
 } from "../server/apiTypes";
-import type { Session, SessionId, TimelineEvent } from "../data/types";
+import type { BrowserName, EventId, EventKind, EventSeverity, IssueId, Session, SessionId, Task, TaskId, TimelineEvent } from "../data/types";
 import type { PlayLensState } from "../state/appState";
 import { createExportContent } from "../exporters/exporters";
 
@@ -188,6 +188,7 @@ function parseAnyManifest(raw: Record<string, unknown> | null): StoredSessionSum
       status: m.session.status,
       browserName: m.session.browser.name,
       startedAt: m.session.startedAt,
+      endedAt: m.session.endedAt,
       updatedAt: m.updatedAt,
       currentUrl: m.session.currentUrl,
       eventCount: m.eventCount,
@@ -204,6 +205,7 @@ function parseAnyManifest(raw: Record<string, unknown> | null): StoredSessionSum
       status: (["running", "completed", "failed", "stopped"].includes(status) ? status : "pending") as Session["status"],
       browserName: "unknown",
       startedAt: (raw.startedAt as string) ?? new Date().toISOString(),
+      endedAt: raw.endedAt as string | undefined,
       updatedAt: (raw.endedAt as string) ?? (raw.startedAt as string) ?? new Date().toISOString(),
       currentUrl: undefined,
       eventCount: (raw.eventCount as number) ?? 0,
@@ -220,7 +222,7 @@ export async function createSessionExport(
   options: SessionStoreOptions = {}
 ): Promise<ExportResult> {
   const paths = await initializeStorage(options);
-  const exportContent = createExportContent(state, format);
+  const exportContent = createExportContent(await hydrateStateFromStoredSessions(state, options), format);
   const createdAt = now(options);
   const fileName = `playlens-export-${safeTimestamp(createdAt)}.${exportContent.extension}`;
   const filePath = path.join(paths.exportsDir, fileName);
@@ -235,6 +237,133 @@ export async function createSessionExport(
     content: exportContent.content,
     createdAt
   };
+}
+
+async function hydrateStateFromStoredSessions(state: PlayLensState, options: SessionStoreOptions): Promise<PlayLensState> {
+  const summaries = await listSessions(options);
+  const existingSessionIds = new Set(state.sessions.map((session) => session.id));
+  const existingEventIds = new Set(state.events.map((event) => event.id));
+  const existingTaskIds = new Set(state.tasks.map((task) => task.id));
+  const hydratedSessions: Session[] = [];
+  const hydratedTasks: Task[] = [];
+  const hydratedEvents: TimelineEvent[] = [];
+
+  for (const summary of summaries) {
+    const taskId = (summary.taskId ?? `task-${sanitizePathPart(summary.id)}`) as TaskId;
+    const events = (await readSessionEvents(summary.id, options)).map((event, index) => normalizeStoredEvent(event, summary.id, taskId, index));
+
+    if (!existingSessionIds.has(summary.id)) {
+      hydratedSessions.push({
+        id: summary.id,
+        taskId,
+        status: normalizeSessionStatus(summary.status),
+        title: summary.title,
+        browser: {
+          name: normalizeBrowserName(summary.browserName),
+          version: "unknown",
+          headless: false,
+          viewport: { width: 0, height: 0 }
+        },
+        environment: {
+          os: "unknown",
+          nodeVersion: "unknown",
+          playwrightVersion: "unknown"
+        },
+        startedAt: summary.startedAt ?? summary.updatedAt,
+        endedAt: summary.endedAt,
+        currentUrl: summary.currentUrl,
+        eventIds: events.map((event) => event.id),
+        issueIds: [],
+        metricIds: []
+      });
+    }
+
+    if (!existingTaskIds.has(taskId)) {
+      hydratedTasks.push({
+        id: taskId,
+        name: summary.title,
+        originalName: summary.title,
+        status: normalizeTaskStatus(summary.status),
+        projectScopeId: "scope-imported-recordings",
+        sessionIds: [summary.id],
+        command: "",
+        entryFile: "",
+        cwd: "",
+        createdAt: summary.startedAt ?? summary.updatedAt,
+        updatedAt: summary.updatedAt,
+        startedAt: summary.startedAt,
+        endedAt: summary.endedAt,
+        tags: ["recorded"],
+        summary: {
+          browser: normalizeBrowserName(summary.browserName),
+          currentUrl: summary.currentUrl,
+          eventCount: summary.eventCount,
+          issueCount: summary.issueCount ?? 0,
+          failedRequestCount: events.filter((event) => event.kind === "network.response" && Number(event.request?.status ?? event.data.status) >= 400).length
+        }
+      });
+    }
+
+    hydratedEvents.push(...events.filter((event) => !existingEventIds.has(event.id)));
+  }
+
+  if (hydratedSessions.length === 0 && hydratedTasks.length === 0 && hydratedEvents.length === 0) return state;
+  return {
+    ...state,
+    tasks: [...state.tasks, ...hydratedTasks],
+    sessions: [...state.sessions, ...hydratedSessions],
+    events: [...state.events, ...hydratedEvents]
+  };
+}
+
+function normalizeStoredEvent(raw: TimelineEvent, sessionId: SessionId, taskId: TaskId, index: number): TimelineEvent {
+  const data = raw.data && typeof raw.data === "object" ? raw.data : {};
+  const requestData = (data.request && typeof data.request === "object" ? data.request : data) as Record<string, unknown>;
+  const method = typeof requestData.method === "string" ? requestData.method : raw.request?.method;
+  const url = typeof requestData.url === "string" ? requestData.url : raw.request?.url;
+  const status = Number(requestData.status ?? raw.request?.status);
+
+  return {
+    id: (raw.id ?? `event-${sanitizePathPart(sessionId)}-${index}`) as EventId,
+    sessionId: (raw.sessionId ?? sessionId) as SessionId,
+    taskId: (raw.taskId ?? taskId) as TaskId,
+    kind: (raw.kind ?? "terminal.output") as EventKind,
+    severity: (raw.severity ?? "info") as EventSeverity,
+    title: raw.title ?? raw.kind ?? "Recorded event",
+    message: raw.message ?? "",
+    timestamp: raw.timestamp ?? now({}),
+    durationMs: raw.durationMs,
+    source: raw.source,
+    url: raw.url ?? url,
+    locator: raw.locator,
+    request: raw.request ?? (method && url
+      ? {
+          method,
+          url,
+          status: Number.isFinite(status) ? status : undefined,
+          durationMs: typeof requestData.durationMs === "number" ? requestData.durationMs : undefined,
+          sizeBytes: typeof requestData.sizeBytes === "number" ? requestData.sizeBytes : undefined
+        }
+      : undefined),
+    artifactIds: Array.isArray(raw.artifactIds) ? raw.artifactIds : [],
+    relatedIssueIds: Array.isArray(raw.relatedIssueIds) ? (raw.relatedIssueIds as IssueId[]) : [],
+    data
+  };
+}
+
+function normalizeSessionStatus(value: string): Session["status"] {
+  return value === "running" || value === "completed" || value === "failed" || value === "stopped" ? value : "pending";
+}
+
+function normalizeTaskStatus(value: string): Task["status"] {
+  if (value === "completed") return "passed";
+  if (value === "failed" || value === "stopped") return value;
+  if (value === "running") return "recording";
+  return "waiting-for-playwright";
+}
+
+function normalizeBrowserName(value: string | undefined): BrowserName {
+  return value === "chromium" || value === "firefox" || value === "webkit" ? value : "unknown";
 }
 
 async function writeManifest(sessionId: SessionId, manifest: SessionManifest, options: SessionStoreOptions): Promise<void> {
