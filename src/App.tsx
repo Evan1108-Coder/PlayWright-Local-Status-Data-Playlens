@@ -22,7 +22,7 @@ import { TaskRail } from "./components/TaskRail";
 import { DataAccessPage } from "./components/DataAccessPage";
 import { createEmptyAppState, searchApp, appActions } from "./state/appState";
 import { hasMiniMaxApiKey } from "./agent/minimaxAdapter";
-import { getStoredState, saveStoredState } from "./lib/apiClient";
+import { getStoredState, saveStoredState, getExportUrl } from "./lib/apiClient";
 
 type ViewKey = "dashboard" | "settings" | "agent" | "data";
 
@@ -44,6 +44,8 @@ export function App() {
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [query, setQuery] = useState("");
   const [highlightTargetId, setHighlightTargetId] = useState<string | null>(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -56,6 +58,33 @@ export function App() {
     return () => {
       active = false;
       window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        const searchInput = document.querySelector<HTMLInputElement>('.search-shell input');
+        searchInput?.focus();
+      }
+      if (e.key === "Escape") {
+        setShowExportMenu(false);
+        setShowMoreMenu(false);
+      }
+    };
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.top-action-wrap')) {
+        setShowExportMenu(false);
+        setShowMoreMenu(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("click", handleClickOutside, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("click", handleClickOutside, true);
     };
   }, []);
 
@@ -85,7 +114,7 @@ export function App() {
     <div className="app-shell">
       <aside className="side-nav" aria-label="Primary navigation">
         <div className="brand-mark">
-          <div className="brand-icon">D</div>
+          <div className="brand-icon">P</div>
         </div>
 
         <nav className="nav-stack">
@@ -157,12 +186,30 @@ export function App() {
             </div>
           ) : null}
 
-          <button className="top-action-button" type="button">
-            <Download size={13} /> Export
-          </button>
-          <button className="top-icon-button" type="button" aria-label="More actions">
-            <MoreVertical size={15} />
-          </button>
+          <div className="top-action-wrap">
+            <button className="top-action-button" type="button" onClick={() => { setShowExportMenu((v) => !v); setShowMoreMenu(false); }}>
+              <Download size={13} /> Export
+            </button>
+            {showExportMenu && (
+              <div className="dropdown-menu export-dropdown">
+                <a href={getExportUrl("json")} target="_blank" rel="noopener noreferrer" onClick={() => setShowExportMenu(false)}>Export as JSON</a>
+                <a href={getExportUrl("ndjson")} target="_blank" rel="noopener noreferrer" onClick={() => setShowExportMenu(false)}>Export as NDJSON</a>
+                <a href={getExportUrl("markdown")} target="_blank" rel="noopener noreferrer" onClick={() => setShowExportMenu(false)}>Export as Markdown</a>
+              </div>
+            )}
+          </div>
+          <div className="top-action-wrap">
+            <button className="top-icon-button" type="button" aria-label="More actions" onClick={() => { setShowMoreMenu((v) => !v); setShowExportMenu(false); }}>
+              <MoreVertical size={15} />
+            </button>
+            {showMoreMenu && (
+              <div className="dropdown-menu more-dropdown">
+                <button onClick={() => { setActiveView("settings"); setShowMoreMenu(false); }}>Open Settings</button>
+                <button onClick={() => { runAction(appActions.clearAIChatHistory); setShowMoreMenu(false); }}>Clear AI History</button>
+                <button onClick={() => { setActiveView("data"); setShowMoreMenu(false); }}>Data & Export</button>
+              </div>
+            )}
+          </div>
         </header>
 
         {query.trim().length > 0 && (

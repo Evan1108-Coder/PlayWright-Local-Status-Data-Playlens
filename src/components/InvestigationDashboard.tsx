@@ -156,6 +156,9 @@ function ReplayPanel({ selectedTask, session, selectedIssue, activeTime, events 
   events: TimelineEvent[];
 }) {
   const [activeTab, setActiveTab] = useState("Replay");
+  const [eventIndex, setEventIndex] = useState(0);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const speeds = [0.5, 1, 2, 4];
   const domEvent = [...events].reverse().find((event) => event.kind === "dom.snapshot");
   const consoleEvents = events.filter((event) => event.kind === "console.message");
   const networkEvents = events.filter((event) => event.request);
@@ -165,6 +168,17 @@ function ReplayPanel({ selectedTask, session, selectedIssue, activeTime, events 
   const beforeText = typeof domEvent?.data.beforeText === "string" ? domEvent.data.beforeText : "";
   const afterText = typeof domEvent?.data.afterText === "string" ? domEvent.data.afterText : "";
 
+  const prevEvent = () => setEventIndex((i) => Math.max(0, i - 1));
+  const nextEvent = () => setEventIndex((i) => Math.min(events.length - 1, i + 1));
+  const cycleSpeed = () => setPlaybackSpeed((s) => speeds[(speeds.indexOf(s) + 1) % speeds.length]);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      void document.querySelector(".replay-console")?.requestFullscreen();
+    }
+  };
+
   return (
     <section className="console-panel replay-console">
       <div className="console-tabs">
@@ -173,9 +187,9 @@ function ReplayPanel({ selectedTask, session, selectedIssue, activeTime, events 
         ))}
       </div>
       <div className="replay-toolbar">
-        <button title="Previous event"><ChevronLeft size={13} /></button>
-        <button title="Next event"><ChevronRight size={13} /></button>
-        <button title="Reload view"><RotateCcw size={12} /></button>
+        <button title="Previous event" onClick={prevEvent}><ChevronLeft size={13} /></button>
+        <button title="Next event" onClick={nextEvent}><ChevronRight size={13} /></button>
+        <button title="Reload view" onClick={() => setEventIndex(0)}><RotateCcw size={12} /></button>
         <div className="url-field">{currentUrl ?? "No URL captured"}</div>
         <button title="Device"><Smartphone size={13} /></button>
         <button>{viewport?.width ? `${viewport.width} x ${viewport.height}` : "--"} <ChevronDown size={12} /></button>
@@ -196,10 +210,21 @@ function ReplayPanel({ selectedTask, session, selectedIssue, activeTime, events 
         {activeTab === "Logs" ? <EvidenceList events={terminalEvents.length ? terminalEvents : events} empty="No terminal output captured." /> : null}
       </div>
       <div className="replay-footer">
-        <div className="transport"><ChevronLeft size={12} /><Play size={12} /><ChevronRight size={12} /></div>
+        <div className="transport">
+          <button title="Previous" onClick={prevEvent}><ChevronLeft size={12} /></button>
+          <button title="Play"><Play size={12} /></button>
+          <button title="Next" onClick={nextEvent}><ChevronRight size={12} /></button>
+        </div>
         <strong>{activeTime}</strong><span>/ {formatDuration(selectedTask?.summary.durationMs ?? session?.durationMs)}</span>
-        <div className="scrubber"><span style={{ width: `${Math.min(92, Math.max(22, events.length * 8))}%` }} /></div>
-        <span>1x</span><Maximize2 size={13} />
+        <div className="scrubber" onClick={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const pct = (e.clientX - rect.left) / rect.width;
+          setEventIndex(Math.round(pct * Math.max(0, events.length - 1)));
+        }} style={{ cursor: "pointer" }}>
+          <span style={{ width: `${events.length > 0 ? Math.min(100, ((eventIndex + 1) / events.length) * 100) : 0}%` }} />
+        </div>
+        <button className="speed-btn" onClick={cycleSpeed} title="Playback speed">{playbackSpeed}x</button>
+        <button className="fullscreen-btn" onClick={toggleFullscreen} title="Toggle fullscreen"><Maximize2 size={13} /></button>
       </div>
     </section>
   );
@@ -310,6 +335,7 @@ function MetricsPanel({ metrics, networkEvents, events }: { metrics: PlayLensSta
 
 function AICompactPanel({ state, issue, aiAvailable }: { state: PlayLensState; issue?: PlayLensState["issues"][number]; aiAvailable: boolean }) {
   const [prompt, setPrompt] = useState("");
+  const [activeTab, setActiveTab] = useState<"chat" | "exports" | "plugins">("chat");
   const aiEnabled = aiAvailable && state.aiAgent.enabled;
   const prompts = [
     issue ? "Why did the payment request fail?" : "What changed in this run?",
@@ -319,42 +345,89 @@ function AICompactPanel({ state, issue, aiAvailable }: { state: PlayLensState; i
 
   return (
     <section className="console-panel ai-console">
-      <div className="drawer-tabs compact-tabs"><button className="active">AI Chat <span>BETA</span></button><button>Exports</button><button>Plugins</button></div>
-      <div className="ai-prompt-stack">
-        <p>{aiEnabled ? "Ask about this session..." : "AI is unavailable until a MiniMax API key is configured."}</p>
-        {prompts.map((item) => <button key={item} disabled={!aiEnabled} onClick={() => setPrompt(item)}>{item}</button>)}
+      <div className="drawer-tabs compact-tabs">
+        <button className={activeTab === "chat" ? "active" : ""} onClick={() => setActiveTab("chat")}>AI Chat <span>BETA</span></button>
+        <button className={activeTab === "exports" ? "active" : ""} onClick={() => setActiveTab("exports")}>Exports</button>
+        <button className={activeTab === "plugins" ? "active" : ""} onClick={() => setActiveTab("plugins")}>Plugins</button>
       </div>
-      <div className={`ai-chat-input compact-input ${!aiEnabled ? "ai-disabled-input" : ""}`}>
-        <input value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={aiEnabled ? "Ask about this session..." : "MiniMax API key missing"} />
-        <button disabled={!aiEnabled}><Send size={14} /></button>
-      </div>
+      {activeTab === "chat" && (
+        <>
+          <div className="ai-prompt-stack">
+            <p>{aiEnabled ? "Ask about this session..." : "AI is unavailable until a MiniMax API key is configured."}</p>
+            {prompts.map((item) => <button key={item} disabled={!aiEnabled} onClick={() => setPrompt(item)}>{item}</button>)}
+          </div>
+          <div className={`ai-chat-input compact-input ${!aiEnabled ? "ai-disabled-input" : ""}`}>
+            <input value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={aiEnabled ? "Ask about this session..." : "MiniMax API key missing"} />
+            <button disabled={!aiEnabled}><Send size={14} /></button>
+          </div>
+        </>
+      )}
+      {activeTab === "exports" && (
+        <div className="tab-placeholder">
+          <FileText size={20} />
+          <p>Session exports will appear here once a recording session has data.</p>
+        </div>
+      )}
+      {activeTab === "plugins" && (
+        <div className="tab-placeholder">
+          <Database size={20} />
+          <p>No plugins installed. Plugins extend PlayLens with custom analysis and reporting.</p>
+        </div>
+      )}
     </section>
   );
 }
 
 function TerminalPanel({ events }: { events: TimelineEvent[] }) {
+  const [activeTab, setActiveTab] = useState<"terminal" | "raw" | "source">("terminal");
   return (
     <section className="console-panel terminal-console">
-      <div className="drawer-tabs compact-tabs"><button className="active">Terminal</button><button>Raw Events</button><button>Source</button></div>
-      <div className="terminal-toolbar"><span>bash</span><TerminalSquare size={13} /><Code2 size={13} /></div>
-      <div className="terminal-lines console-terminal-lines">
-        {events.map((event) => {
-          const level = event.severity === "critical" || event.severity === "error" ? "error" : event.severity;
-          return (
-            <div key={event.id} className="terminal-line">
-              <span className="term-time">{formatClock(event.timestamp)}</span>
-              <span className={`term-level ${level}`}>{level.toUpperCase()}</span>
-              <span className="term-message">{event.message}</span>
-            </div>
-          );
-        })}
+      <div className="drawer-tabs compact-tabs">
+        <button className={activeTab === "terminal" ? "active" : ""} onClick={() => setActiveTab("terminal")}>Terminal</button>
+        <button className={activeTab === "raw" ? "active" : ""} onClick={() => setActiveTab("raw")}>Raw Events</button>
+        <button className={activeTab === "source" ? "active" : ""} onClick={() => setActiveTab("source")}>Source</button>
       </div>
+      {activeTab === "terminal" && (
+        <>
+          <div className="terminal-toolbar"><span>bash</span><TerminalSquare size={13} /><Code2 size={13} /></div>
+          <div className="terminal-lines console-terminal-lines">
+            {events.map((event) => {
+              const level = event.severity === "critical" || event.severity === "error" ? "error" : event.severity;
+              return (
+                <div key={event.id} className="terminal-line">
+                  <span className="term-time">{formatClock(event.timestamp)}</span>
+                  <span className={`term-level ${level}`}>{level.toUpperCase()}</span>
+                  <span className="term-message">{event.message}</span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+      {activeTab === "raw" && (
+        <div className="terminal-lines console-terminal-lines raw-events-view">
+          {events.length ? events.map((event) => (
+            <pre key={event.id} className="raw-event-json">{JSON.stringify({ id: event.id, kind: event.kind, title: event.title, message: event.message, timestamp: event.timestamp, severity: event.severity }, null, 2)}</pre>
+          )) : <div className="empty-console">No events to display.</div>}
+        </div>
+      )}
+      {activeTab === "source" && (
+        <div className="terminal-lines console-terminal-lines">
+          {events.filter((e) => e.source).length ? events.filter((e) => e.source).map((event) => (
+            <div key={event.id} className="terminal-line">
+              <span className="term-time">{event.source?.filePath}:{event.source?.line ?? "?"}</span>
+              <span className="term-message">{event.title}</span>
+            </div>
+          )) : <div className="empty-console">No source locations captured in events.</div>}
+        </div>
+      )}
     </section>
   );
 }
 
 function GraphPanel({ events, issue, actionEvent, startTime }: { events: TimelineEvent[]; issue?: PlayLensState["issues"][number]; actionEvent?: TimelineEvent; startTime?: string }) {
   const [view, setView] = useState<"Graph" | "Table">("Graph");
+  const [depth, setDepth] = useState(2);
   const request = events.find((event) => event.request);
   const response = events.find((event) => (event.request?.status ?? 0) >= 400) ?? request;
   const consoleEvent = events.find((event) => event.kind === "console.message") ?? events.find((event) => event.severity === "warning");
@@ -371,7 +444,11 @@ function GraphPanel({ events, issue, actionEvent, startTime }: { events: Timelin
       <div className="drawer-tabs compact-tabs">
         {(["Graph", "Table"] as const).map((tab) => <button key={tab} className={view === tab ? "active" : ""} onClick={() => setView(tab)}>{tab}</button>)}
       </div>
-      <div className="graph-toolbar"><button>Depth 2 <ChevronDown size={12} /></button><span>100%</span><Maximize2 size={13} /></div>
+      <div className="graph-toolbar">
+        <button onClick={() => setDepth((d) => d === 2 ? 3 : d === 3 ? 1 : 2)}>Depth {depth} <ChevronDown size={12} /></button>
+        <span>100%</span>
+        <button onClick={() => { const el = document.querySelector(".graph-console"); el && (document.fullscreenElement ? void document.exitFullscreen() : void el.requestFullscreen()); }} title="Toggle fullscreen"><Maximize2 size={13} /></button>
+      </div>
       {view === "Graph" ? (
         <div className="causal-graph">
           {nodes.length ? nodes.map((node, index) => (

@@ -32,7 +32,7 @@
 
 body {
   margin: 0;
-  min-width: 1180px;
+  min-width: 320px;
   background: var(--bg-base);
 }
 
@@ -2995,4 +2995,153 @@ button { cursor: pointer; }
   color: var(--text-muted);
   font-size: 10px;
   line-height: 1.3;
+}
+
+/* ── Dropdown Menus ── */
+.top-action-wrap {
+  position: relative;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  min-width: 180px;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  overflow: hidden;
+}
+
+.dropdown-menu a,
+.dropdown-menu button {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.dropdown-menu a:hover,
+.dropdown-menu button:hover {
+  background: var(--bg-card-hover);
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+  .top-bar {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .info-badges {
+    display: none;
+  }
+  .metric-strip {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+  .side-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: auto;
+    flex-direction: row;
+    z-index: 200;
+    border-top: 1px solid var(--border);
+    padding: 4px 8px;
+  }
+  .side-nav .brand-mark,
+  .side-nav .system-card {
+    display: none;
+  }
+  .nav-stack {
+    flex-direction: row;
+    gap: 4px;
+  }
+  .main-shell {
+    padding-bottom: 56px;
+  }
+}
+
+/* ── Tab Placeholder ── */
+.tab-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 16px;
+  color: var(--text-muted);
+  text-align: center;
+  flex: 1;
+}
+
+.tab-placeholder p {
+  margin: 0;
+  font-size: 11px;
+  max-width: 260px;
+  line-height: 1.5;
+}
+
+/* ── Speed & Fullscreen buttons in replay footer ── */
+.speed-btn,
+.fullscreen-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.speed-btn:hover,
+.fullscreen-btn:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+}
+
+/* ── Transport buttons ── */
+.transport button {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  padding: 2px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.transport button:hover {
+  color: var(--text-primary);
+}
+
+/* ── Raw Events ── */
+.raw-event-json {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 10px;
+  padding: 6px 8px;
+  margin: 0;
+  border-bottom: 1px solid var(--border);
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-secondary);
 }

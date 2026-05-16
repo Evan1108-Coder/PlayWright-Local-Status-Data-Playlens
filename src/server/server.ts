@@ -1,5 +1,23 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import { fileURLToPath } from "node:url";
+
+(function loadDotEnv() {
+  try {
+    const envPath = resolve(fileURLToPath(import.meta.url), "../../../.env");
+    const lines = readFileSync(envPath, "utf-8").split("\n");
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIndex = trimmed.indexOf("=");
+      if (eqIndex === -1) continue;
+      const key = trimmed.slice(0, eqIndex).trim();
+      const value = trimmed.slice(eqIndex + 1).trim().replace(/^["']|["']$/g, "");
+      if (!process.env[key]) process.env[key] = value;
+    }
+  } catch {}
+})();
 import type { ApiErrorBody, ExportFormat, HealthResponse, SessionsResponse, StateResponse, StateSaveResponse } from "./apiTypes";
 import { createEmptyAppState, createInitialAppState, type PlayLensState } from "../state/appState";
 import {
