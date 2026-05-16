@@ -1,4 +1,6 @@
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ApiErrorBody, ExportFormat, HealthResponse, SessionsResponse, StateResponse, StateSaveResponse } from "./apiTypes";
 import { createEmptyAppState, createInitialAppState, type PlayLensState } from "../state/appState";
@@ -56,7 +58,9 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
       }
 
       if (request.method === "GET" && url.pathname === "/api/state") {
-        const state = await hydrateStateFromStoredSessions(await loadOrCreateState(storeOptions), storeOptions);
+        const eventLimit = parsePositiveInteger(url.searchParams.get("eventLimit"));
+        const compactRuntimeMarkers = url.searchParams.get("compactRuntimeMarkers") === "1";
+        const state = await hydrateStateFromStoredSessions(await loadOrCreateState(storeOptions), storeOptions, { eventLimit, compactRuntimeMarkers });
         sendJson<StateResponse>(response, 200, { status: "ok", state });
         return;
       }
@@ -69,10 +73,49 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/memory/clear") {
+        const body = await readJsonBody<{ confirm?: boolean }>(request);
+        if (body.confirm !== true) {
+          sendError(response, 400, "confirmation_required", "Set confirm=true to clear PlayLens memory.");
+          return;
+        }
+        const paths = getStoragePaths(storeOptions);
+        await Promise.all([
+          fs.rm(paths.stateDir, { recursive: true, force: true }),
+          fs.rm(paths.snapshotsDir, { recursive: true, force: true }),
+          fs.rm(paths.exportsDir, { recursive: true, force: true }),
+          fs.rm(paths.sessionsDir, { recursive: true, force: true })
+        ]);
+        await initializeStorage(storeOptions);
+        const empty = createEmptyAppState();
+        await saveAppStateSnapshot(empty, storeOptions);
+        sendJson(response, 200, { status: "ok", clearedAt: new Date().toISOString() });
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/sessions") {
         await loadOrCreateState(storeOptions);
         const sessions = await listSessions(storeOptions);
         sendJson<SessionsResponse>(response, 200, { status: "ok", sessions });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/artifact") {
+        const sessionId = url.searchParams.get("sessionId");
+        const artifactPath = url.searchParams.get("path");
+        if (!sessionId || !artifactPath) {
+          sendError(response, 400, "bad_request", "sessionId and path are required.");
+          return;
+        }
+        const paths = getStoragePaths(storeOptions);
+        const artifactsDir = path.resolve(paths.sessionsDir, safePathPart(sessionId), "artifacts");
+        const filePath = path.resolve(artifactsDir, artifactPath);
+        if (!filePath.startsWith(`${artifactsDir}${path.sep}`)) {
+          sendError(response, 400, "bad_artifact_path", "Artifact path must stay inside the session artifacts directory.");
+          return;
+        }
+        const bytes = await fs.readFile(filePath);
+        sendBinary(response, 200, bytes, contentTypeForArtifact(filePath));
         return;
       }
 
@@ -187,6 +230,12 @@ function parseExportFormat(value: string | null): ExportFormat {
   throw new Error(`Unsupported export format: ${value ?? "missing"}`);
 }
 
+function parsePositiveInteger(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
   const chunks: Buffer[] = [];
   for await (const chunk of request) {
@@ -219,6 +268,14 @@ function sendText(
   response.end(body);
 }
 
+function sendBinary(response: ServerResponse, statusCode: number, body: Buffer, contentType: string): void {
+  response.writeHead(statusCode, {
+    "Content-Type": contentType,
+    "Cache-Control": "no-store"
+  });
+  response.end(body);
+}
+
 function sendError(response: ServerResponse, statusCode: number, code: string, message: string): void {
   const body: ApiErrorBody = { status: "error", error: { code, message } };
   sendJson(response, statusCode, body);
@@ -228,6 +285,20 @@ function setCorsHeaders(response: ServerResponse): void {
   response.setHeader("Access-Control-Allow-Origin", "*");
   response.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
+function contentTypeForArtifact(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".json") return "application/json; charset=utf-8";
+  if (ext === ".txt" || ext === ".md") return "text/plain; charset=utf-8";
+  return "application/octet-stream";
+}
+
+function safePathPart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
 const isDirectRun = process.argv[1] === fileURLToPath(import.meta.url);

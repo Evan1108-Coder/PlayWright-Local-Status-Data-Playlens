@@ -20,6 +20,11 @@ export interface SessionStoreOptions {
   clock?: () => string;
 }
 
+export interface HydrateStateOptions {
+  eventLimit?: number;
+  compactRuntimeMarkers?: boolean;
+}
+
 export interface StoragePaths {
   rootDir: string;
   stateDir: string;
@@ -186,6 +191,8 @@ function parseAnyManifest(raw: Record<string, unknown> | null): StoredSessionSum
       taskId: m.session.taskId,
       title: m.session.title,
       status: m.session.status,
+      command: undefined,
+      cwd: undefined,
       browserName: m.session.browser.name,
       startedAt: m.session.startedAt,
       endedAt: m.session.endedAt,
@@ -197,12 +204,15 @@ function parseAnyManifest(raw: Record<string, unknown> | null): StoredSessionSum
   }
 
   if (typeof raw.sessionId === "string") {
-    const status = String(raw.status ?? "pending");
+    const status = normalizeStoredSessionStatus(String(raw.status ?? "pending"), typeof raw.pid === "number" ? raw.pid : undefined);
+    const command = typeof raw.command === "string" ? raw.command : undefined;
     return {
       id: raw.sessionId as SessionId,
       taskId: (raw.taskId ?? "task-unknown") as Session["taskId"],
-      title: (raw.name as string) ?? "Recorded Session",
-      status: (["running", "completed", "failed", "stopped"].includes(status) ? status : "pending") as Session["status"],
+      title: deriveSummaryTitle((raw.name as string) ?? "Recorded Session", command),
+      status,
+      command,
+      cwd: typeof raw.cwd === "string" ? raw.cwd : undefined,
       browserName: "unknown",
       startedAt: (raw.startedAt as string) ?? new Date().toISOString(),
       endedAt: raw.endedAt as string | undefined,
@@ -214,6 +224,30 @@ function parseAnyManifest(raw: Record<string, unknown> | null): StoredSessionSum
   }
 
   return null;
+}
+
+function normalizeStoredSessionStatus(status: string, pid?: number): Session["status"] {
+  if (status === "running" && pid && !isProcessAlive(pid)) return "stopped";
+  return (["running", "completed", "failed", "stopped"].includes(status) ? status : "pending") as Session["status"];
+}
+
+function deriveSummaryTitle(title: string, command?: string): string {
+  if (command) {
+    const parts = command.trim().split(/\s+/);
+    if ((parts[0] === "npm" || parts[0] === "pnpm" || parts[0] === "yarn") && parts[1] === "run" && parts[2]) {
+      return titleCaseScriptName(parts[2]);
+    }
+  }
+  return title;
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function createSessionExport(
@@ -239,7 +273,7 @@ export async function createSessionExport(
   };
 }
 
-export async function hydrateStateFromStoredSessions(state: PlayLensState, options: SessionStoreOptions): Promise<PlayLensState> {
+export async function hydrateStateFromStoredSessions(state: PlayLensState, options: SessionStoreOptions, hydrateOptions: HydrateStateOptions = {}): Promise<PlayLensState> {
   const summaries = await listSessions(options);
   const existingSessionIds = new Set(state.sessions.map((session) => session.id));
   const existingEventIds = new Set(state.events.map((event) => event.id));
@@ -252,7 +286,15 @@ export async function hydrateStateFromStoredSessions(state: PlayLensState, optio
 
   for (const summary of summaries) {
     const taskId = (summary.taskId ?? `task-${sanitizePathPart(summary.id)}`) as TaskId;
-    const events = (await readSessionEvents(summary.id, options)).map((event, index) => normalizeStoredEvent(event, summary.id, taskId, index));
+    const storedEvents = await readSessionEvents(summary.id, options);
+    const windowedEvents = hydrateOptions.eventLimit && storedEvents.length > hydrateOptions.eventLimit
+      ? storedEvents.slice(-hydrateOptions.eventLimit)
+      : storedEvents;
+    const firstWindowIndex = storedEvents.length - windowedEvents.length;
+    const normalizedEvents = windowedEvents.map((event, index) => normalizeStoredEvent(event, summary.id, taskId, firstWindowIndex + index));
+    const events = hydrateOptions.compactRuntimeMarkers
+      ? normalizedEvents.filter((event) => !isRuntimeMarkerTerminalEvent(event))
+      : normalizedEvents;
     const derivedUrl = summary.currentUrl ?? deriveCurrentUrl(events);
     const derivedDuration = deriveDurationMs(summary.startedAt, summary.endedAt, events);
     const derivedViewport = deriveViewport(events);
@@ -290,16 +332,17 @@ export async function hydrateStateFromStoredSessions(state: PlayLensState, optio
     }
 
     if (!existingTaskIds.has(taskId)) {
+      const taskName = deriveTaskName(summary);
       hydratedTasks.push({
         id: taskId,
-        name: summary.title,
-        originalName: summary.title,
+        name: taskName,
+        originalName: taskName,
         status: normalizeTaskStatus(summary.status),
         projectScopeId: "scope-imported-recordings",
         sessionIds: [summary.id],
-        command: "",
+        command: summary.command ?? "",
         entryFile: "",
-        cwd: "",
+        cwd: summary.cwd ?? "",
         createdAt: summary.startedAt ?? summary.updatedAt,
         updatedAt: summary.updatedAt,
         startedAt: summary.startedAt,
@@ -329,6 +372,24 @@ export async function hydrateStateFromStoredSessions(state: PlayLensState, optio
     issues: [...state.issues, ...hydratedIssues],
     selectedTaskId: state.tasks.length > 0 ? state.selectedTaskId : hydratedTasks[0]?.id ?? state.selectedTaskId
   };
+}
+
+function deriveTaskName(summary: StoredSessionSummary): string {
+  if (summary.command) {
+    const parts = summary.command.trim().split(/\s+/);
+    if ((parts[0] === "npm" || parts[0] === "pnpm" || parts[0] === "yarn") && parts[1] === "run" && parts[2]) {
+      return titleCaseScriptName(parts[2]);
+    }
+  }
+  return summary.title;
+}
+
+function titleCaseScriptName(scriptName: string): string {
+  return scriptName
+    .split(/[:_-]+/g)
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
 }
 
 function deriveCurrentUrl(events: TimelineEvent[]): string | undefined {
@@ -388,10 +449,28 @@ function normalizeStoredEvent(raw: TimelineEvent, sessionId: SessionId, taskId: 
           sizeBytes: typeof requestData.sizeBytes === "number" ? requestData.sizeBytes : undefined
         }
       : undefined),
-    artifactIds: Array.isArray(raw.artifactIds) ? raw.artifactIds : [],
+    artifactIds: deriveArtifactIds(raw, embedded, data),
     relatedIssueIds: Array.isArray(raw.relatedIssueIds) ? (raw.relatedIssueIds as IssueId[]) : [],
     data
   };
+}
+
+function isRuntimeMarkerTerminalEvent(event: TimelineEvent): boolean {
+  if (event.kind !== "terminal.output") return false;
+  const streamText = typeof event.data.text === "string" ? event.data.text.trimStart() : "";
+  return event.message.trimStart().startsWith("[PlayLens]") || streamText.startsWith("[PlayLens]");
+}
+
+function deriveArtifactIds(raw: TimelineEvent, embedded: Partial<TimelineEvent> | undefined, data: Record<string, unknown>): string[] {
+  if (Array.isArray(embedded?.artifactIds)) return embedded.artifactIds.map(String);
+  if (Array.isArray(raw.artifactIds) && raw.artifactIds.length) return raw.artifactIds.map(String);
+  if (Array.isArray(data.artifactIds)) return data.artifactIds.map(String);
+  if (Array.isArray(data.artifacts)) {
+    return data.artifacts
+      .map((artifact) => artifact && typeof artifact === "object" ? (artifact as { id?: unknown; path?: unknown }).id ?? (artifact as { path?: unknown }).path : undefined)
+      .filter((value): value is string => typeof value === "string");
+  }
+  return [];
 }
 
 function normalizeStoredIssue(event: TimelineEvent, sessionId: SessionId, taskId: TaskId): Issue {

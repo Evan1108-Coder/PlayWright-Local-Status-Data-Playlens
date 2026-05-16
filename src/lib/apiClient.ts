@@ -16,6 +16,8 @@ export interface StoredSessionSummary {
   taskId?: string;
   title: string;
   status: string;
+  command?: string;
+  cwd?: string;
   eventCount: number;
   issueCount?: number;
   artifactCount?: number;
@@ -40,7 +42,7 @@ export async function getApiHealth(): Promise<ApiClientResult<ApiHealth>> {
 }
 
 export async function getStoredState(): Promise<ApiClientResult<PlayLensState>> {
-  const result = await getJson<PlayLensState | { status: "ok"; state: PlayLensState }>("/api/state");
+  const result = await getJson<PlayLensState | { status: "ok"; state: PlayLensState }>("/api/state?eventLimit=140&compactRuntimeMarkers=1");
   if (!result.ok || !result.data) return result as ApiClientResult<PlayLensState>;
   if ("state" in result.data) return { ok: true, data: result.data.state };
   return { ok: true, data: result.data };
@@ -50,6 +52,12 @@ export async function saveStoredState(state: PlayLensState): Promise<ApiClientRe
   return postJson<{ status: "ok"; savedAt: string; snapshotPath: string }, { savedAt: string; snapshotPath: string }>("/api/state", state, (data) => ({
     savedAt: data.savedAt,
     snapshotPath: data.snapshotPath
+  }));
+}
+
+export async function clearAppMemory(): Promise<ApiClientResult<{ clearedAt: string }>> {
+  return postJson<{ status: "ok"; clearedAt: string }, { clearedAt: string }>("/api/memory/clear", { confirm: true }, (data) => ({
+    clearedAt: data.clearedAt
   }));
 }
 
@@ -67,6 +75,11 @@ export async function getStoredSessions(): Promise<ApiClientResult<StoredSession
 
 export function getExportUrl(format: "json" | "ndjson" | "markdown"): string {
   return `${API_BASE}/api/export?format=${format}`;
+}
+
+export function getArtifactUrl(sessionId: string, artifactPath: string): string {
+  const params = new URLSearchParams({ sessionId, path: artifactPath });
+  return `${API_BASE}/api/artifact?${params.toString()}`;
 }
 
 async function getJson<T>(path: string): Promise<ApiClientResult<T>> {

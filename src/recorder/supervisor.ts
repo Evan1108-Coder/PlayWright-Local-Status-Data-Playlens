@@ -143,7 +143,8 @@ function supportsImportFlag(): boolean {
 }
 
 function writeTerminalChunk(store: RecorderStore, session: Parameters<RecorderStore["writeEvent"]>[0], stream: "stdout" | "stderr", text: string): void {
-  const trimmed = text.replace(/\s+$/g, "");
+  const trimmed = stripPlayLensMarkerLines(text).replace(/\s+$/g, "");
+  if (!trimmed) return;
   store.writeEvent(session, {
     kind: "terminal.output",
     severity: stream === "stderr" ? "warning" : "trace",
@@ -151,6 +152,13 @@ function writeTerminalChunk(store: RecorderStore, session: Parameters<RecorderSt
     message: trimmed.slice(0, 500) || `[${text.length} bytes]`,
     data: { stream, text, byteLength: Buffer.byteLength(text) }
   });
+}
+
+function stripPlayLensMarkerLines(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .filter((line) => !line.startsWith(PLAYLENS_MARKER_PREFIX))
+    .join("\n");
 }
 
 function mergeNodeOptions(existing: string | undefined, registerPath: string, esmRegisterPath?: string): string {
@@ -205,6 +213,13 @@ function runPassthrough(command: string[], cwd: string): Promise<RunSupervisorRe
 }
 
 function deriveRunName(command: string[]): string {
+  if ((command[0] === "npm" || command[0] === "pnpm" || command[0] === "yarn") && command[1] === "run" && command[2]) {
+    return command[2]
+      .split(/[:_-]+/g)
+      .filter(Boolean)
+      .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+      .join(" ");
+  }
   const useful = command.find((part) => /\.(mjs|cjs|js|ts|tsx)$/.test(part)) ?? command[0];
   return useful ? useful.split(/[\\/]/).at(-1) ?? useful : "PlayLens Run";
 }

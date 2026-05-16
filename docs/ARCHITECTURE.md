@@ -64,6 +64,10 @@ No UI panel owns independent truth for important data.
 
 When `PLAYLENS_STORAGE_DIR` points at a project-local `.playlens/sessions` directory, the backend treats that session stream as the source of truth for tasks, sessions, events, issues, current URLs, durations, and browser viewport metadata. The frontend starts from empty state, polls `/api/state`, and renders blank panels when no real recording exists instead of falling back to demo values.
 
+The live dashboard polls a compact state window so busy recordings stay responsive. This does not truncate the source data: append-only session files and export routes hydrate the full stream unless a UI-specific window is requested.
+
+When no real sessions exist, the frontend derives a non-persisted `Blank` task with zero data. That task is only a UI placeholder; it is not exported as a real session and disappears as soon as a recording exists. AI controls stay disabled while only the blank task exists.
+
 Examples:
 
 - Renaming a task updates task list, header, search index, exports, AI context, audit log, and open tabs.
@@ -96,6 +100,12 @@ sessions/
       terminal/
       ai/
 ```
+
+The current implementation serves linked image artifacts through `/api/artifact?sessionId=<id>&path=<artifact>`. Replay uses the selected event's image artifact first, then falls back to the latest image artifact in the session.
+
+For running sessions, the dashboard follows the newest event so live artifacts can update in place. Historical sessions default to the most relevant action/issue event and stay stable until the user selects another event.
+
+Clear Memory is intentionally destructive and scoped to the currently configured storage root. It removes session streams, image artifacts, exports, and saved state snapshots, then returns the UI to the derived `Blank` task.
 
 Users may choose project-local storage from Settings.
 

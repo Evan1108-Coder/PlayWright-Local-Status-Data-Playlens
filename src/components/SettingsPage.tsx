@@ -1,4 +1,4 @@
-import { FolderPlus, RotateCcw, Search, ShieldAlert, Trash2 } from "lucide-react";
+import { FolderPlus, Search, ShieldAlert, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { SettingId, SettingItem, SettingValue } from "../data/types";
 import type { PlayLensState } from "../state/appState";
@@ -10,6 +10,7 @@ interface SettingsPageProps {
   onUpdateSetting: (settingId: SettingId, value: SettingValue) => void;
   onAddWatchedFolder: (folderPath: string) => void;
   onClearAIHistory: () => void;
+  onClearMemory: () => void;
 }
 
 const REQUIRED_GROUPS = [
@@ -22,7 +23,7 @@ const REQUIRED_GROUPS = [
   ["advanced", "Advanced", "Raw config, analyzer toggles, schema version, debug mode, and experiments."],
 ] as const;
 
-export function SettingsPage({ state, highlightTargetId, aiAvailable, onUpdateSetting, onAddWatchedFolder, onClearAIHistory }: SettingsPageProps) {
+export function SettingsPage({ state, highlightTargetId, aiAvailable, onUpdateSetting, onAddWatchedFolder, onClearAIHistory, onClearMemory }: SettingsPageProps) {
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<Record<string, SettingValue>>({});
 
@@ -76,8 +77,6 @@ export function SettingsPage({ state, highlightTargetId, aiAvailable, onUpdateSe
         >
           <FolderPlus size={15} /> Add Folder
         </button>
-        <button onClick={onClearAIHistory}><Trash2 size={15} /> Clear AI Chat</button>
-        <button><RotateCcw size={15} /> Reset Layout</button>
       </div>
 
       <div className="settings-layout">
@@ -143,6 +142,7 @@ export function SettingsPage({ state, highlightTargetId, aiAvailable, onUpdateSe
               <p>Destructive operations should always create audit records and require confirmation in the full app.</p>
             </div>
             <button onClick={onClearAIHistory}><ShieldAlert size={15} /> Clear AI chat history</button>
+            <button onClick={onClearMemory}><Trash2 size={15} /> Clear Memory</button>
           </section>
         </div>
       </div>

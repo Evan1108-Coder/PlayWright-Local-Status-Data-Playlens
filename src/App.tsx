@@ -22,7 +22,8 @@ import { TaskRail } from "./components/TaskRail";
 import { DataAccessPage } from "./components/DataAccessPage";
 import { createEmptyAppState, searchApp, appActions } from "./state/appState";
 import { hasMiniMaxApiKey } from "./agent/minimaxAdapter";
-import { getStoredState, saveStoredState } from "./lib/apiClient";
+import { clearAppMemory, getExportUrl, getStoredState, saveStoredState } from "./lib/apiClient";
+import type { Task, TaskId } from "./data/types";
 
 type ViewKey = "dashboard" | "settings" | "agent" | "data";
 
@@ -39,20 +40,55 @@ function formatDuration(ms?: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+function createBlankTask(): Task {
+  const timestamp = new Date(0).toISOString();
+  return {
+    id: "task-blank" as TaskId,
+    name: "Blank",
+    originalName: "Blank",
+    status: "waiting-for-playwright",
+    projectScopeId: "scope-blank",
+    sessionIds: [],
+    command: "",
+    entryFile: "",
+    cwd: "",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    tags: ["blank"],
+    summary: {
+      browser: "unknown",
+      eventCount: 0,
+      issueCount: 0,
+      failedRequestCount: 0,
+      durationMs: 0
+    }
+  };
+}
+
 export function App() {
   const [state, setState] = useState(() => createEmptyAppState());
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [query, setQuery] = useState("");
   const [highlightTargetId, setHighlightTargetId] = useState<string | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
+    let refreshing = false;
     const refresh = () => void getStoredState().then((result) => {
+      refreshing = false;
       if (!active || !result.ok || !result.data) return;
       setState(result.data);
+    }).catch(() => {
+      refreshing = false;
     });
-    refresh();
-    const timer = window.setInterval(refresh, 2500);
+    const guardedRefresh = () => {
+      if (refreshing) return;
+      refreshing = true;
+      refresh();
+    };
+    guardedRefresh();
+    const timer = window.setInterval(guardedRefresh, 750);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -60,10 +96,31 @@ export function App() {
   }, []);
 
   const searchResults = useMemo(() => searchApp(state, query), [query, state]);
-  const selectedTask = state.tasks.find((task) => task.id === state.selectedTaskId) ?? state.tasks[0];
+  const blankTask = useMemo(() => createBlankTask(), []);
+  const hasRealTasks = state.tasks.length > 0;
+  const liveTasks = state.tasks.filter((task) => task.status === "recording");
+  const historyTasks = state.tasks.filter((task) => task.status !== "recording");
+  const selectedRealTask = state.tasks.find((task) => task.id === state.selectedTaskId);
+  const visibleRealTasks = hasRealTasks
+    ? [
+        ...liveTasks,
+        ...historyTasks.slice(0, 2),
+        ...(selectedRealTask && !liveTasks.some((task) => task.id === selectedRealTask.id) && !historyTasks.slice(0, 2).some((task) => task.id === selectedRealTask.id)
+          ? [selectedRealTask]
+          : [])
+      ]
+    : [];
+  const visibleTasks = hasRealTasks ? visibleRealTasks : [blankTask];
+  const hiddenTaskCount = Math.max(0, state.tasks.length - visibleRealTasks.length);
+  const selectedTask = state.tasks.find((task) => task.id === state.selectedTaskId) ?? state.tasks[0] ?? blankTask;
   const aiAvailable = useMemo(() => hasMiniMaxApiKey(), []);
+  const aiUsable = aiAvailable && hasRealTasks;
   const session = state.sessions.find((s) => s.taskId === selectedTask?.id);
   const taskIssueCount = state.issues.filter((i) => i.taskId === selectedTask?.id).length;
+
+  useEffect(() => {
+    if (!hasRealTasks && activeView === "agent") setActiveView("dashboard");
+  }, [activeView, hasRealTasks]);
 
   const runAction = <T extends unknown[]>(action: (current: typeof state, ...args: T) => typeof state, ...args: T) => {
     setState((current) => {
@@ -81,6 +138,19 @@ export function App() {
     }, 10000);
   };
 
+  const clearMemory = async () => {
+    const ok = window.confirm("Clear all PlayLens memory for the current storage folder? This removes tasks, sessions, artifacts, exports, settings snapshots, and AI chat history.");
+    if (!ok) return;
+    const result = await clearAppMemory();
+    if (!result.ok) {
+      window.alert(result.error ?? "Could not clear PlayLens memory.");
+      return;
+    }
+    setState(createEmptyAppState());
+    setActiveView("dashboard");
+    setQuery("");
+  };
+
   return (
     <div className="app-shell">
       <aside className="side-nav" aria-label="Primary navigation">
@@ -91,12 +161,14 @@ export function App() {
         <nav className="nav-stack">
           {views.map((view) => {
             const Icon = view.icon;
+            const disabled = view.key === "agent" && !hasRealTasks;
             return (
               <button
                 key={view.key}
                 className={`nav-item ${activeView === view.key ? "active" : ""}`}
+                disabled={disabled}
                 onClick={() => { setActiveView(view.key); setQuery(""); }}
-                title={view.label}
+                title={disabled ? "AI Agent is unavailable until a real recording exists." : view.label}
               >
                 <Icon size={17} />
                 <span>{view.label}</span>
@@ -105,11 +177,11 @@ export function App() {
           })}
         </nav>
 
-        <div className="system-card" title={aiAvailable ? state.aiAgent.status : "AI disabled"}>
+        <div className="system-card" title={aiUsable ? state.aiAgent.status : "AI disabled"}>
           <ShieldCheck size={16} />
           <div>
-            <strong>{aiAvailable ? state.aiAgent.mode : "AI disabled"}</strong>
-            <span>{aiAvailable ? state.aiAgent.status : "missing key"}</span>
+            <strong>{aiUsable ? state.aiAgent.mode : "AI disabled"}</strong>
+            <span>{!hasRealTasks ? "blank task" : aiAvailable ? state.aiAgent.status : "missing key"}</span>
           </div>
         </div>
       </aside>
@@ -157,12 +229,22 @@ export function App() {
             </div>
           ) : null}
 
-          <button className="top-action-button" type="button">
+          <a className="top-action-button" href={getExportUrl("json")}>
             <Download size={13} /> Export
-          </button>
-          <button className="top-icon-button" type="button" aria-label="More actions">
-            <MoreVertical size={15} />
-          </button>
+          </a>
+          <div className="top-menu-wrap">
+            <button className="top-icon-button" type="button" aria-label="More actions" aria-expanded={moreOpen} onClick={() => setMoreOpen((current) => !current)}>
+              <MoreVertical size={15} />
+            </button>
+            {moreOpen ? (
+              <div className="top-menu">
+                <button onClick={() => { setActiveView("data"); setMoreOpen(false); }}>Open Data</button>
+                <button onClick={() => { setActiveView("settings"); setMoreOpen(false); }}>Open Settings</button>
+                <a href={getExportUrl("ndjson")}>Export NDJSON</a>
+                <a href={getExportUrl("markdown")}>Export Markdown</a>
+              </div>
+            ) : null}
+          </div>
         </header>
 
         {query.trim().length > 0 && (
@@ -176,15 +258,20 @@ export function App() {
         <div className={`workspace-grid ${activeView === "dashboard" ? "dashboard-mode" : ""}`}>
           {activeView !== "dashboard" && (
             <TaskRail
-              tasks={state.tasks}
-              selectedTaskId={state.selectedTaskId}
+              tasks={visibleTasks}
+              totalTaskCount={hasRealTasks ? state.tasks.length : 1}
+              hiddenTaskCount={hiddenTaskCount}
+              selectedTaskId={selectedTask.id}
               highlightTargetId={highlightTargetId}
-              onSelectTask={(taskId) => setState((current) => {
-                const next = { ...current, selectedTaskId: taskId };
-                void saveStoredState(next);
-                return next;
-              })}
-              onRenameTask={(taskId, name) => runAction(appActions.renameTask, taskId, name)}
+              onSelectTask={(taskId) => {
+                if (taskId === "task-blank") return;
+                setState((current) => {
+                  const next = { ...current, selectedTaskId: taskId };
+                  void saveStoredState(next);
+                  return next;
+                });
+              }}
+              onRenameTask={(taskId, name) => taskId !== "task-blank" && runAction(appActions.renameTask, taskId, name)}
             />
           )}
 
@@ -195,7 +282,7 @@ export function App() {
                 selectedTask={selectedTask}
                 highlightTargetId={highlightTargetId}
                 onOpenSettings={() => setActiveView("settings")}
-                aiAvailable={aiAvailable}
+                aiAvailable={aiUsable}
               />
             )}
             {activeView === "settings" && (
@@ -206,6 +293,7 @@ export function App() {
                 onUpdateSetting={(settingId, value) => runAction(appActions.updateSetting, settingId, value)}
                 onAddWatchedFolder={(folderPath) => runAction(appActions.addWatchedFolder, folderPath)}
                 onClearAIHistory={() => runAction(appActions.clearAIChatHistory)}
+                onClearMemory={clearMemory}
               />
             )}
             {activeView === "agent" && (

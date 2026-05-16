@@ -3,6 +3,8 @@ import type { Task, TaskId } from "../data/types";
 
 interface TaskRailProps {
   tasks: Task[];
+  totalTaskCount: number;
+  hiddenTaskCount: number;
   selectedTaskId: TaskId;
   highlightTargetId: string | null;
   onSelectTask: (taskId: TaskId) => void;
@@ -18,12 +20,14 @@ function statusColor(status: Task["status"]): string {
   }
 }
 
-export function TaskRail({ tasks, selectedTaskId, highlightTargetId, onSelectTask, onRenameTask }: TaskRailProps) {
+export function TaskRail({ tasks, totalTaskCount, hiddenTaskCount, selectedTaskId, highlightTargetId, onSelectTask, onRenameTask }: TaskRailProps) {
+  const liveCount = tasks.filter((task) => task.status === "recording").length;
   return (
     <aside className="task-rail" aria-label="Tasks">
       <div className="panel-header">
         <div>
-          <h2>{tasks.length} Tasks</h2>
+          <h2>{totalTaskCount} Tasks</h2>
+          <p>{liveCount ? `${liveCount} live, ${hiddenTaskCount} older hidden` : hiddenTaskCount ? `Showing recent history, ${hiddenTaskCount} older hidden` : "Showing current sessions"}</p>
         </div>
       </div>
       <div className="task-list">
@@ -40,7 +44,7 @@ export function TaskRail({ tasks, selectedTaskId, highlightTargetId, onSelectTas
                 <Circle size={6} fill={statusColor(task.status)} stroke="none" />
                 {task.status}
               </span>
-              <small>{task.entryFile}</small>
+              <small>{task.command || task.entryFile || (task.status === "recording" ? "Live recording" : "Historical recording")}</small>
             </button>
             <button
               className="task-rename"

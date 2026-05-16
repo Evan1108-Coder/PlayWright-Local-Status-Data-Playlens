@@ -50,6 +50,8 @@ export interface StoredSessionSummary {
   taskId: Session["taskId"];
   title: string;
   status: Session["status"];
+  command?: string;
+  cwd?: string;
   browserName: Session["browser"]["name"];
   startedAt: ISODateTime;
   endedAt?: ISODateTime;
