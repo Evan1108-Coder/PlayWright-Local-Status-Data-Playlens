@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Code2, Database, Download, Server, TerminalSquare } from "lucide-react";
+import type { TaskId } from "../data/types";
 import type { PlayLensState } from "../state/appState";
 import {
   getApiHealth,
@@ -12,9 +13,10 @@ import { RecorderStatusPanel } from "./RecorderStatusPanel";
 
 interface DataAccessPageProps {
   state: PlayLensState;
+  onOpenTask: (taskId: PlayLensState["tasks"][number]["id"]) => void;
 }
 
-export function DataAccessPage({ state }: DataAccessPageProps) {
+export function DataAccessPage({ state, onOpenTask }: DataAccessPageProps) {
   const [health, setHealth] = useState<ApiHealth | null>(null);
   const [sessions, setSessions] = useState<StoredSessionSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -96,12 +98,12 @@ const sessions = await client.listSessions();`}</pre>
       <section className="session-table">
         <h3><Database size={16} /> Sessions</h3>
         {visibleSessions.map((session) => (
-          <div className="session-row" key={session.id}>
+          <button className="session-row" key={session.id} onClick={() => session.taskId && onOpenTask(session.taskId as TaskId)} disabled={!session.taskId}>
             <strong>{session.title}</strong>
             <span>{session.status}</span>
             <span>{session.eventCount} events</span>
             <span>{session.issueCount ?? 0} issues</span>
-          </div>
+          </button>
         ))}
       </section>
     </section>

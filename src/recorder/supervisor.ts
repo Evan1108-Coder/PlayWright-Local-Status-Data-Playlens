@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -76,6 +77,20 @@ export async function runSupervisedCommand(options: RunSupervisorOptions): Promi
       message: child.pid ? `PID ${child.pid}` : "PID unavailable",
       data: { pid: child.pid }
     });
+    const metricsTimer = child.pid
+      ? setInterval(() => {
+          const metrics = readProcessMetrics(child.pid);
+          if (!metrics) return;
+          store.writeEvent(session, {
+            kind: "system.metric",
+            severity: "trace",
+            title: "System sample",
+            message: `CPU ${metrics.cpuPercent.toFixed(1)}%, memory ${metrics.memoryMb.toFixed(1)} MB`,
+            data: metrics
+          });
+        }, 1000)
+      : undefined;
+    metricsTimer?.unref();
 
     child.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
@@ -106,6 +121,7 @@ export async function runSupervisedCommand(options: RunSupervisorOptions): Promi
     });
 
     child.on("close", (exitCode, signal) => {
+      if (metricsTimer) clearInterval(metricsTimer);
       const severity = exitCode === 0 ? "info" : "error";
       store.writeEvent(session, {
         kind: "process.exited",
@@ -125,6 +141,21 @@ export async function runSupervisedCommand(options: RunSupervisorOptions): Promi
       });
     });
   });
+}
+
+function readProcessMetrics(pid?: number): { cpuPercent: number; memoryMb: number; processCount: number } | undefined {
+  if (!pid || process.platform === "win32") return undefined;
+  try {
+    const output = execFileSync("ps", ["-o", "%cpu=", "-o", "rss=", "-p", String(pid)], { encoding: "utf8" }).trim();
+    if (!output) return undefined;
+    const [cpuRaw, rssRaw] = output.split(/\s+/);
+    const cpuPercent = Number(cpuRaw);
+    const rssKb = Number(rssRaw);
+    if (!Number.isFinite(cpuPercent) || !Number.isFinite(rssKb)) return undefined;
+    return { cpuPercent, memoryMb: rssKb / 1024, processCount: 1 };
+  } catch {
+    return undefined;
+  }
 }
 
 export function getRuntimeRegisterPath(): string {

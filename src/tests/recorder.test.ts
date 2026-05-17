@@ -24,7 +24,7 @@ try {
     command: [
       process.execPath,
       "-e",
-      "try { require('playwright') } catch { console.log('missing playwright is fine') }"
+      "try { require('playwright') } catch { console.log('missing playwright is fine') } setTimeout(() => {}, 1200)"
     ]
   });
 
@@ -36,12 +36,14 @@ try {
   assert.ok(events.some((event) => event.kind === "process.started"));
   assert.ok(events.some((event) => event.kind === "terminal.output"));
   assert.ok(events.some((event) => event.kind === "playwright.detected"));
+  assert.ok(events.some((event) => event.kind === "system.metric"), "supervised runs should emit system metric samples");
   assert.equal(sessions[0].manifest.status, "completed");
 
   const exported = await createSessionExport("json", createEmptyAppState(), { projectRoot: tempRoot });
   const exportedPayload = JSON.parse(exported.content) as { state: { sessions: unknown[]; events: Array<{ kind: string }> } };
   assert.equal(exportedPayload.state.sessions.length, 1);
   assert.ok(exportedPayload.state.events.some((event) => event.kind === "playwright.detected"));
+  assert.ok(exportedPayload.state.events.some((event) => event.kind === "system.metric"));
 
   console.log("PlayLens recorder tests passed.");
 } finally {

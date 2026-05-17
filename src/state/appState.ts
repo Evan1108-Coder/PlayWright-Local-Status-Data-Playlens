@@ -1,4 +1,5 @@
 import { initialAppState } from "../data/mockData";
+import { ensureCompleteSettingsGroups } from "../settings/settingsCatalog";
 import type {
   AppState,
   AuditLogRecord,
@@ -43,7 +44,7 @@ export function createEmptyAppState(): PlayLensState {
     sessions: [],
     events: [],
     issues: [],
-    settingsGroups: structuredClone(initialAppState.settingsGroups),
+    settingsGroups: ensureCompleteSettingsGroups(structuredClone(initialAppState.settingsGroups)),
     projectScopes: [],
     auditLog: [],
     aiAgent: structuredClone(initialAppState.aiAgent),
@@ -78,7 +79,7 @@ export const appActions = {
   updateSetting(state: PlayLensState, settingId: SettingId, value: SettingValue): PlayLensState {
     let before: SettingValue | undefined;
     let label: string = settingId;
-    const groups = state.settingsGroups.map((group) => ({
+    const groups = ensureCompleteSettingsGroups(state.settingsGroups).map((group) => ({
       ...group,
       items: group.items.map((item) => {
         if (item.id !== settingId) return item;
@@ -90,7 +91,7 @@ export const appActions = {
 
     return normalizeState({
       ...state,
-      settingsGroups: groups,
+      settingsGroups: ensureCompleteSettingsGroups(groups),
       aiAgent:
         settingId === "setting-ai-mode" && typeof value === "string"
           ? { ...state.aiAgent, mode: value as PlayLensState["aiAgent"]["mode"], updatedAt: now() }
@@ -296,6 +297,7 @@ function normalizeState(state: NormalizableState): PlayLensState {
   const latestMetric = taskMetrics.at(-1) ?? state.systemMetrics.at(-1);
   return {
     ...state,
+    settingsGroups: ensureCompleteSettingsGroups(state.settingsGroups),
     selectedTaskId: selectedId,
     agent: state.aiAgent,
     system: {

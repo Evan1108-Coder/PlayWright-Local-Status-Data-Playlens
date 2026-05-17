@@ -22,7 +22,7 @@ import { TaskRail } from "./components/TaskRail";
 import { DataAccessPage } from "./components/DataAccessPage";
 import { createEmptyAppState, searchApp, appActions } from "./state/appState";
 import { hasMiniMaxApiKey } from "./agent/minimaxAdapter";
-import { clearAppMemory, getExportUrl, getStoredState, saveStoredState } from "./lib/apiClient";
+import { addWatchedFolder, clearAppMemory, getExportUrl, getStoredState, saveStoredState } from "./lib/apiClient";
 import type { Task, TaskId } from "./data/types";
 
 type ViewKey = "dashboard" | "settings" | "agent" | "data";
@@ -131,11 +131,28 @@ export function App() {
   };
 
   const jumpToTarget = (targetId: string, view?: ViewKey) => {
+    const taskId = findTaskIdForTarget(state, targetId);
+    if (taskId) {
+      setState((current) => {
+        const next = { ...current, selectedTaskId: taskId };
+        void saveStoredState(next);
+        return next;
+      });
+    }
     if (view) setActiveView(view);
     setHighlightTargetId(targetId);
     window.setTimeout(() => {
       setHighlightTargetId((current) => (current === targetId ? null : current));
     }, 10000);
+  };
+
+  const plugWatchedFolder = async (folderPath: string) => {
+    const result = await addWatchedFolder(folderPath);
+    if (!result.ok || !result.data) {
+      window.alert(result.error ?? "Could not plug in that folder.");
+      return;
+    }
+    setState(result.data);
   };
 
   const clearMemory = async () => {
@@ -205,7 +222,7 @@ export function App() {
               <span className="top-stat"><small>Duration</small><strong><Clock size={12} /> {formatDuration(selectedTask.summary.durationMs)}</strong></span>
             )}
             {selectedTask?.summary.currentUrl && (
-              <span className="top-stat wide"><small>URL</small><strong><Globe size={12} /> {new URL(selectedTask.summary.currentUrl).pathname}</strong></span>
+              <span className="top-stat wide"><small>URL</small><strong><Globe size={12} /> {formatUrlPath(selectedTask.summary.currentUrl)}</strong></span>
             )}
             {taskIssueCount > 0 && (
               <span className="top-stat danger"><small>Issues</small><strong><AlertTriangle size={12} /> {taskIssueCount}</strong></span>
@@ -291,7 +308,7 @@ export function App() {
                 highlightTargetId={highlightTargetId}
                 aiAvailable={aiAvailable}
                 onUpdateSetting={(settingId, value) => runAction(appActions.updateSetting, settingId, value)}
-                onAddWatchedFolder={(folderPath) => runAction(appActions.addWatchedFolder, folderPath)}
+                onAddWatchedFolder={plugWatchedFolder}
                 onClearAIHistory={() => runAction(appActions.clearAIChatHistory)}
                 onClearMemory={clearMemory}
               />
@@ -309,11 +326,39 @@ export function App() {
               </div>
             )}
             {activeView === "data" && (
-              <DataAccessPage state={state} />
+              <DataAccessPage
+                state={state}
+                onOpenTask={(taskId) => {
+                  setState((current) => {
+                    const next = { ...current, selectedTaskId: taskId };
+                    void saveStoredState(next);
+                    return next;
+                  });
+                  setActiveView("dashboard");
+                }}
+              />
             )}
           </section>
         </div>
       </main>
     </div>
   );
+}
+
+function findTaskIdForTarget(state: ReturnType<typeof createEmptyAppState>, targetId: string): TaskId | undefined {
+  if (state.tasks.some((task) => task.id === targetId)) return targetId as TaskId;
+  const issue = state.issues.find((item) => item.id === targetId);
+  if (issue) return issue.taskId;
+  const event = state.events.find((item) => item.id === targetId);
+  if (event) return event.taskId;
+  const session = state.sessions.find((item) => item.id === targetId);
+  return session?.taskId;
+}
+
+function formatUrlPath(value: string): string {
+  try {
+    return new URL(value, "http://playlens.local").pathname || value;
+  } catch {
+    return value;
+  }
 }

@@ -71,6 +71,18 @@ async function main() {
     assert.equal(health.ok, true, "SDK health should reach backend");
     const sessions = await client.listSessions();
     assert.equal(Array.isArray(sessions), true, "SDK sessions should be an array");
+    const search = await client.search("timeout");
+    assert.equal(search.some((result) => result.label.includes("timeout")), true, "SDK search should reach backend search route");
+
+    const pluggedFolder = path.join(tempRoot, "plugged-from-api");
+    await fs.mkdir(pluggedFolder, { recursive: true });
+    const plugResponse = await fetch(`http://127.0.0.1:${address.port}/api/project-scopes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folderPath: pluggedFolder })
+    });
+    assert.equal(plugResponse.ok, true, "project scope API should accept a folder");
+    await fs.access(path.join(pluggedFolder, ".playlens", "project.json"));
   } finally {
     server.close();
     await fs.rm(tempRoot, { recursive: true, force: true });

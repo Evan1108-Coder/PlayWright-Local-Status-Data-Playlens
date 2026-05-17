@@ -2,8 +2,10 @@ import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { initProjectScope } from "../recorder/projectScope";
+import { ensureCompleteSettingsGroups } from "../settings/settingsCatalog";
 import type { ApiErrorBody, ExportFormat, HealthResponse, SessionsResponse, StateResponse, StateSaveResponse } from "./apiTypes";
-import { createEmptyAppState, createInitialAppState, type PlayLensState } from "../state/appState";
+import { createEmptyAppState, createInitialAppState, searchApp, type PlayLensState } from "../state/appState";
 import {
   appendSessionEvent,
   createSession,
@@ -60,16 +62,39 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
       if (request.method === "GET" && url.pathname === "/api/state") {
         const eventLimit = parsePositiveInteger(url.searchParams.get("eventLimit"));
         const compactRuntimeMarkers = url.searchParams.get("compactRuntimeMarkers") === "1";
-        const state = await hydrateStateFromStoredSessions(await loadOrCreateState(storeOptions), storeOptions, { eventLimit, compactRuntimeMarkers });
+        const state = await hydrateStateFromStoredSessions(await loadOrCreateState(storeOptions), storeOptions, {
+          eventLimit,
+          compactRuntimeMarkers,
+          replaceTasksFromSessions: Boolean(process.env.PLAYLENS_STORAGE_DIR)
+        });
         sendJson<StateResponse>(response, 200, { status: "ok", state });
         return;
       }
 
       if (request.method === "POST" && url.pathname === "/api/state") {
         const state = await readJsonBody<PlayLensState>(request);
-        const saved = await saveAppStateSnapshot(state, storeOptions);
-        await seedSessionManifestsFromState(state, storeOptions);
+        const stateToSave = process.env.PLAYLENS_STORAGE_DIR ? createRecordingBackedState(state) : state;
+        const saved = await saveAppStateSnapshot(stateToSave, storeOptions);
+        if (!process.env.PLAYLENS_STORAGE_DIR) await seedSessionManifestsFromState(state, storeOptions);
         sendJson<StateSaveResponse>(response, 200, { status: "ok", savedAt: saved.savedAt, snapshotPath: saved.snapshotPath });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/project-scopes") {
+        const body = await readJsonBody<{ folderPath?: string }>(request);
+        if (!body.folderPath?.trim()) {
+          sendError(response, 400, "folder_required", "folderPath is required.");
+          return;
+        }
+        const state = await loadOrCreateState(storeOptions);
+        const next = addInitializedProjectScope(state, body.folderPath);
+        const saved = await saveAppStateSnapshot(process.env.PLAYLENS_STORAGE_DIR ? createRecordingBackedState(next) : next, storeOptions);
+        const hydrated = await hydrateStateFromStoredSessions(await loadOrCreateState(storeOptions), storeOptions, {
+          eventLimit: 140,
+          compactRuntimeMarkers: true,
+          replaceTasksFromSessions: Boolean(process.env.PLAYLENS_STORAGE_DIR)
+        });
+        sendJson(response, 200, { status: "ok", savedAt: saved.savedAt, state: hydrated });
         return;
       }
 
@@ -97,6 +122,15 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
         await loadOrCreateState(storeOptions);
         const sessions = await listSessions(storeOptions);
         sendJson<SessionsResponse>(response, 200, { status: "ok", sessions });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/search") {
+        const query = url.searchParams.get("q") ?? "";
+        const state = await hydrateStateFromStoredSessions(await loadOrCreateState(storeOptions), storeOptions, {
+          replaceTasksFromSessions: Boolean(process.env.PLAYLENS_STORAGE_DIR)
+        });
+        sendJson(response, 200, searchApp(state, query));
         return;
       }
 
@@ -150,7 +184,7 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
       if (request.method === "GET" && url.pathname === "/api/export") {
         const format = parseExportFormat(url.searchParams.get("format"));
         const state = await loadOrCreateState(storeOptions);
-        const result = await createSessionExport(format, state, storeOptions);
+        const result = await createSessionExport(format, state, storeOptions, { replaceTasksFromSessions: Boolean(process.env.PLAYLENS_STORAGE_DIR) });
         sendText(response, 200, result.content, result.contentType, {
           "Content-Disposition": `attachment; filename="${result.fileName}"`,
           "X-PlayLens-Export-Path": result.filePath
@@ -202,16 +236,58 @@ function createRecordingBackedState(existing: PlayLensState | null): PlayLensSta
   if (!existing) return empty;
   return {
     ...empty,
-    settingsGroups: existing.settingsGroups,
+    tasks: existing.tasks,
+    settingsGroups: ensureCompleteSettingsGroups(existing.settingsGroups),
     projectScopes: existing.projectScopes,
     auditLog: existing.auditLog,
     aiAgent: existing.aiAgent,
     agent: existing.aiAgent,
     uploadedFiles: existing.uploadedFiles,
     lastUpdatedAt: existing.lastUpdatedAt,
-    selectedTaskId: empty.selectedTaskId,
+    selectedTaskId: existing.selectedTaskId ?? empty.selectedTaskId,
     system: empty.system
   };
+}
+
+function addInitializedProjectScope(state: PlayLensState, folderPath: string): PlayLensState {
+  const result = initProjectScope(folderPath);
+  const now = new Date().toISOString();
+  const scope = {
+    id: `scope-${slugify(result.config.name)}-${Date.now().toString(36)}` as PlayLensState["projectScopes"][number]["id"],
+    name: result.config.name,
+    rootPath: result.rootPath,
+    configPath: result.configPath,
+    status: "active" as const,
+    include: result.config.scope.include,
+    exclude: result.config.scope.exclude,
+    storageMode: result.config.storage.mode,
+    autoCreateTasks: result.config.tasks.autoCreate,
+    recordOnlyWhenPlaywrightDetected: result.config.tasks.recordOnlyWhenPlaywrightDetected,
+    createdAt: result.config.createdAt,
+    updatedAt: now,
+    detected: result.detected
+  };
+  return {
+    ...state,
+    projectScopes: [scope, ...state.projectScopes.filter((item) => item.rootPath !== scope.rootPath)],
+    auditLog: [
+      {
+        id: `audit-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}` as PlayLensState["auditLog"][number]["id"],
+        timestamp: now,
+        actor: "user",
+        action: result.created ? "projectScope.init" : "projectScope.add",
+        summary: `${result.created ? "Initialized" : "Added"} watched folder "${scope.name}".`,
+        entityType: "project-scope",
+        entityId: scope.id
+      },
+      ...state.auditLog
+    ],
+    lastUpdatedAt: now
+  };
+}
+
+function slugify(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 36) || "project";
 }
 
 async function seedSessionManifestsFromState(state: PlayLensState, storeOptions: { projectRoot?: string }): Promise<void> {

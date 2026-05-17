@@ -61,6 +61,11 @@ export async function clearAppMemory(): Promise<ApiClientResult<{ clearedAt: str
   }));
 }
 
+export async function addWatchedFolder(folderPath: string): Promise<ApiClientResult<PlayLensState>> {
+  const result = await postJson<{ status: "ok"; state: PlayLensState }, PlayLensState>("/api/project-scopes", { folderPath }, (data) => data.state);
+  return result;
+}
+
 export async function getStoredSessions(): Promise<ApiClientResult<StoredSessionSummary[]>> {
   const result = await getJson<StoredSessionSummary[] | { status: "ok"; sessions: Array<StoredSessionSummary & { issueCount?: number }> }>("/api/sessions");
   if (!result.ok || !result.data) return result as ApiClientResult<StoredSessionSummary[]>;

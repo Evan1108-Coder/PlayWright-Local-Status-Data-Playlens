@@ -55,6 +55,12 @@ PLAYLENS_STORAGE_DIR="/path/to/project/.playlens/sessions" npm run api
 - Npm script task names are derived from the script name when command metadata exists, so `npm run demo:live` appears as `Demo Live`.
 - Stale `running` manifests are normalized to `stopped` when their PID is no longer alive.
 - The task rail shows live tasks plus the most recent historical tasks, with older sessions hidden from the rail instead of deleted.
+- Data page session rows open the matching task in the dashboard, so hidden history remains inspectable.
+- SDK search reaches the backend `/api/search` route.
+- Settings Add Folder creates a real `.playlens/project.json` through the backend project-scope API.
+- Supplemental settings are durable, searchable, and persist after reload.
+- Recorder-backed UI saves no longer rewrite session manifests or drop command/cwd metadata.
+- Supervised runs emit `system.metric` samples and hydrate CPU/memory data into dashboard state.
 - Replay tabs switch between honest Replay empty state, DOM, Console, Network, and Logs data.
 - Replay no longer duplicates previous/next controls; the top toolbar owns event navigation and the footer owns playback/progress.
 - Replay fullscreen expands and exits through both the visible `Exit full screen` button and Escape.
@@ -137,6 +143,30 @@ PLAYLENS_STORAGE_DIR="/path/to/project/.playlens/sessions" npm run api
 21. Fullscreen mode had no obvious escape path.
    - Fixed by adding `Exit full screen` controls and Escape-key handling.
 
+22. Saving UI state in `PLAYLENS_STORAGE_DIR` mode could rewrite raw recorder manifests and drop `command`/`cwd`.
+   - Fixed by saving recorder-backed UI preferences separately from append-only session manifests.
+
+23. Renaming real recorded tasks reverted after reload.
+   - Fixed by preserving task overrides during session hydration without rewriting the underlying recorder stream.
+
+24. Add Folder only changed UI state and did not create `.playlens/project.json`.
+   - Fixed by adding a backend project-scope route that calls the same initializer as the CLI.
+
+25. Supplemental Settings rows were UI-only and reset after reload.
+   - Fixed by promoting supplemental groups into the durable settings catalog and action layer.
+
+26. Hidden/older sessions were visible in Data but not openable.
+   - Fixed by making Data session rows select the matching task and return to the dashboard.
+
+27. SDK `search()` called a missing `/api/search` route.
+   - Fixed by adding the backend search route and smoke coverage.
+
+28. CPU/memory status was advertised but not captured by supervised runs.
+   - Fixed by sampling supervised process metrics and hydrating `systemMetrics`.
+
+29. Header URL rendering could throw on relative URLs.
+   - Fixed by formatting URLs with a safe base and fallback.
+
 ## 2026-05-16 Verification Pass
 
 - `npm run lint && npm run build` passed.
@@ -152,6 +182,14 @@ PLAYLENS_STORAGE_DIR="/path/to/project/.playlens/sessions" npm run api
   - Fullscreen exited by button and Escape.
   - Settings opened and `Clear Memory` was visible.
   - Raw `[PlayLens]` marker rows were not visible in the dashboard.
+- Follow-up regression pass after fixes:
+  - Add Folder created `.playlens/project.json` in an isolated temp project.
+  - Supplemental setting `Maximum parallel tracked tasks` persisted after reload.
+  - `/api/search` returned settings and renamed task results.
+  - Renaming a live recorded task persisted after reload and did not mutate the raw session manifest shape.
+  - Data session rows opened the selected historical task.
+  - Live supervised run emitted hydrated system metrics.
+  - Newest live session switched to `stopped` after process termination.
 
 ## Remaining Risks
 

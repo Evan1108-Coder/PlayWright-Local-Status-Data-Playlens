@@ -2959,14 +2959,28 @@ button { cursor: pointer; }
   grid-template-columns: minmax(0, 1fr) repeat(3, auto);
   gap: 10px;
   align-items: center;
+  width: 100%;
   padding: 8px;
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.025);
   color: var(--text-muted);
   font-size: 12px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .session-row strong { color: var(--text-primary); }
+
+.session-row:hover {
+  border-color: rgba(77, 183, 169, 0.4);
+  background: rgba(77, 183, 169, 0.08);
+}
+
+.session-row:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
 
 /* ── Network card (used in causal chain) ── */
 .network-card {

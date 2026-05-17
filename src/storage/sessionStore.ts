@@ -7,7 +7,7 @@ import type {
   SessionManifest,
   StoredSessionSummary
 } from "../server/apiTypes";
-import type { BrowserName, EventId, EventKind, EventSeverity, Issue, IssueCategory, IssueId, Session, SessionId, Task, TaskId, TimelineEvent } from "../data/types";
+import type { BrowserName, EventId, EventKind, EventSeverity, Issue, IssueCategory, IssueId, Session, SessionId, SystemMetricId, SystemMetricSample, Task, TaskId, TimelineEvent } from "../data/types";
 import type { PlayLensState } from "../state/appState";
 import { createExportContent } from "../exporters/exporters";
 
@@ -23,6 +23,7 @@ export interface SessionStoreOptions {
 export interface HydrateStateOptions {
   eventLimit?: number;
   compactRuntimeMarkers?: boolean;
+  replaceTasksFromSessions?: boolean;
 }
 
 export interface StoragePaths {
@@ -253,10 +254,11 @@ function isProcessAlive(pid: number): boolean {
 export async function createSessionExport(
   format: ExportFormat,
   state: PlayLensState,
-  options: SessionStoreOptions = {}
+  options: SessionStoreOptions = {},
+  hydrateOptions: HydrateStateOptions = {}
 ): Promise<ExportResult> {
   const paths = await initializeStorage(options);
-  const exportContent = createExportContent(await hydrateStateFromStoredSessions(state, options), format);
+  const exportContent = createExportContent(await hydrateStateFromStoredSessions(state, options, hydrateOptions), format);
   const createdAt = now(options);
   const fileName = `playlens-export-${safeTimestamp(createdAt)}.${exportContent.extension}`;
   const filePath = path.join(paths.exportsDir, fileName);
@@ -277,12 +279,15 @@ export async function hydrateStateFromStoredSessions(state: PlayLensState, optio
   const summaries = await listSessions(options);
   const existingSessionIds = new Set(state.sessions.map((session) => session.id));
   const existingEventIds = new Set(state.events.map((event) => event.id));
-  const existingTaskIds = new Set(state.tasks.map((task) => task.id));
+  const existingTaskById = new Map(state.tasks.map((task) => [task.id, task]));
   const existingIssueIds = new Set(state.issues.map((issue) => issue.id));
+  const existingMetricIds = new Set(state.systemMetrics.map((metric) => metric.id));
   const hydratedSessions: Session[] = [];
   const hydratedTasks: Task[] = [];
   const hydratedEvents: TimelineEvent[] = [];
   const hydratedIssues: Issue[] = [];
+  const hydratedMetrics: SystemMetricSample[] = [];
+  const hydratedTaskIds = new Set<TaskId>();
 
   for (const summary of summaries) {
     const taskId = (summary.taskId ?? `task-${sanitizePathPart(summary.id)}`) as TaskId;
@@ -303,6 +308,11 @@ export async function hydrateStateFromStoredSessions(state: PlayLensState, optio
       .map((event) => normalizeStoredIssue(event, summary.id, taskId))
       .filter((issue) => !existingIssueIds.has(issue.id));
     const issueIds = issues.map((issue) => issue.id);
+    const metrics = events
+      .filter((event) => event.kind === "system.metric")
+      .map((event) => normalizeStoredMetric(event, summary.id, taskId))
+      .filter((metric) => !existingMetricIds.has(metric.id));
+    const metricIds = metrics.map((metric) => metric.id);
 
     if (!existingSessionIds.has(summary.id)) {
       hydratedSessions.push({
@@ -327,16 +337,18 @@ export async function hydrateStateFromStoredSessions(state: PlayLensState, optio
         currentUrl: derivedUrl,
         eventIds: events.map((event) => event.id),
         issueIds,
-        metricIds: []
+        metricIds
       });
     }
 
-    if (!existingTaskIds.has(taskId)) {
-      const taskName = deriveTaskName(summary);
+    if (hydrateOptions.replaceTasksFromSessions || !existingTaskById.has(taskId)) {
+      const existingTask = existingTaskById.get(taskId);
+      const taskName = existingTask?.name && existingTask.name !== existingTask.originalName ? existingTask.name : deriveTaskName(summary);
+      hydratedTaskIds.add(taskId);
       hydratedTasks.push({
         id: taskId,
         name: taskName,
-        originalName: taskName,
+        originalName: existingTask?.originalName ?? deriveTaskName(summary),
         status: normalizeTaskStatus(summary.status),
         projectScopeId: "scope-imported-recordings",
         sessionIds: [summary.id],
@@ -361,16 +373,24 @@ export async function hydrateStateFromStoredSessions(state: PlayLensState, optio
 
     hydratedEvents.push(...events.filter((event) => !existingEventIds.has(event.id)));
     hydratedIssues.push(...issues);
+    hydratedMetrics.push(...metrics);
   }
 
-  if (hydratedSessions.length === 0 && hydratedTasks.length === 0 && hydratedEvents.length === 0 && hydratedIssues.length === 0) return state;
+  if (hydratedSessions.length === 0 && hydratedTasks.length === 0 && hydratedEvents.length === 0 && hydratedIssues.length === 0 && hydratedMetrics.length === 0) return state;
+  const nextTasks = hydrateOptions.replaceTasksFromSessions
+    ? [...hydratedTasks, ...state.tasks.filter((task) => !hydratedTaskIds.has(task.id))]
+    : [...state.tasks, ...hydratedTasks];
+  const nextSelectedTaskId = nextTasks.some((task) => task.id === state.selectedTaskId)
+    ? state.selectedTaskId
+    : nextTasks[0]?.id ?? state.selectedTaskId;
   return {
     ...state,
-    tasks: [...state.tasks, ...hydratedTasks],
+    tasks: nextTasks,
     sessions: [...state.sessions, ...hydratedSessions],
     events: [...state.events, ...hydratedEvents],
     issues: [...state.issues, ...hydratedIssues],
-    selectedTaskId: state.tasks.length > 0 ? state.selectedTaskId : hydratedTasks[0]?.id ?? state.selectedTaskId
+    systemMetrics: [...state.systemMetrics, ...hydratedMetrics],
+    selectedTaskId: nextSelectedTaskId
   };
 }
 
@@ -499,6 +519,21 @@ function normalizeStoredIssue(event: TimelineEvent, sessionId: SessionId, taskId
     eventIds: [event.id],
     evidence,
     suggestedFixes: []
+  };
+}
+
+function normalizeStoredMetric(event: TimelineEvent, sessionId: SessionId, taskId: TaskId): SystemMetricSample {
+  const data = event.data ?? {};
+  return {
+    id: `metric-${sanitizePathPart(event.id)}` as SystemMetricId,
+    taskId,
+    sessionId,
+    timestamp: event.timestamp,
+    cpuPercent: Number(data.cpuPercent ?? 0),
+    memoryMb: Number(data.memoryMb ?? 0),
+    browserCpuPercent: typeof data.browserCpuPercent === "number" ? data.browserCpuPercent : undefined,
+    browserMemoryMb: typeof data.browserMemoryMb === "number" ? data.browserMemoryMb : undefined,
+    processCount: typeof data.processCount === "number" ? data.processCount : undefined
   };
 }
 

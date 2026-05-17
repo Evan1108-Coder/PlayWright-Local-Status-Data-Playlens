@@ -64,6 +64,8 @@ No UI panel owns independent truth for important data.
 
 When `PLAYLENS_STORAGE_DIR` points at a project-local `.playlens/sessions` directory, the backend treats that session stream as the source of truth for tasks, sessions, events, issues, current URLs, durations, and browser viewport metadata. The frontend starts from empty state, polls `/api/state`, and renders blank panels when no real recording exists instead of falling back to demo values.
 
+Recorder-backed UI preferences, such as task renames, selected task, settings, watched folders, and AI memory, are saved in app state without rewriting the append-only session manifests. Hydration merges those UI overrides over the recorder stream at read time.
+
 The live dashboard polls a compact state window so busy recordings stay responsive. This does not truncate the source data: append-only session files and export routes hydrate the full stream unless a UI-specific window is requested.
 
 When no real sessions exist, the frontend derives a non-persisted `Blank` task with zero data. That task is only a UI placeholder; it is not exported as a real session and disappears as soon as a recording exists. AI controls stay disabled while only the blank task exists.

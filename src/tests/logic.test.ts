@@ -18,6 +18,12 @@ const timeoutSetting = runtimeGroup?.items.find((item) => item.id === "setting-r
 assert.equal(timeoutSetting?.value, 45000, "setting update should mutate central settings model");
 assert.equal(state.auditLog[0].action, "settings.update", "setting update should be audited");
 
+state = appActions.updateSetting(state, "setting-tasks-max-parallel", 7);
+const tasksGroup = state.settingsGroups.find((group) => group.id === "tasks");
+const maxParallelSetting = tasksGroup?.items.find((item) => item.id === "setting-tasks-max-parallel");
+assert.equal(maxParallelSetting?.value, 7, "supplemental settings should be part of durable settings state");
+assert.equal(searchApp(state, "Maximum parallel tracked tasks").some((result) => result.targetId === "setting-tasks-max-parallel"), true, "supplemental settings should be searchable");
+
 state = appActions.clearAIChatHistory(state);
 assert.equal(state.aiAgent.messages.length, 0, "clearing AI history should empty messages");
 assert.equal(state.auditLog[0].action, "ai.clearChatHistory", "clearing AI history should be audited");
