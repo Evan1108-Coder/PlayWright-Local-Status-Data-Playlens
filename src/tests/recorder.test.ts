@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { initProjectScope } from "../recorder/projectScope";
+import { detectProject, initProjectScope } from "../recorder/projectScope";
 import { runSupervisedCommand } from "../recorder/supervisor";
 import { RecorderStore } from "../recorder/storage";
 import { createSessionExport } from "../storage/sessionStore";
@@ -17,6 +17,31 @@ try {
   const scope = initProjectScope(tempRoot);
   assert.equal(scope.created, true);
   assert.match(scope.configPath, /\.playlens\/project\.json$/);
+
+  const demoRoot = join(tempRoot, "demo-scripts");
+  mkdirSync(demoRoot, { recursive: true });
+  writeFileSync(join(demoRoot, "playwright.config.cjs"), "module.exports = {};\n");
+  writeFileSync(
+    join(demoRoot, "package.json"),
+    JSON.stringify({
+      name: "demo-scripts",
+      private: true,
+      scripts: {
+        "demo:pass": "node src/checkout-pass.cjs",
+        "demo:fail": "node src/checkout-failure.cjs",
+        "demo:no-playwright": "node src/no-playwright.cjs"
+      },
+      devDependencies: {
+        "@playwright/test": "^1.0.0"
+      }
+    }, null, 2)
+  );
+  const detected = detectProject(demoRoot);
+  assert.deepEqual(
+    detected.npmScripts.sort(),
+    ["demo:fail", "demo:no-playwright", "demo:pass"].sort(),
+    "Playwright project detection should report demo scripts by script name and project context"
+  );
 
   const result = await runSupervisedCommand({
     cwd: tempRoot,

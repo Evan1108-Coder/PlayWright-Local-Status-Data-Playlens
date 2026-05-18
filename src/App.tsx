@@ -125,6 +125,12 @@ export function App() {
     if (!hasRealTasks && activeView === "agent") setActiveView("dashboard");
   }, [activeView, hasRealTasks]);
 
+  const selectView = (view: ViewKey) => {
+    setActiveView(view);
+    setQuery("");
+    setMoreOpen(false);
+  };
+
   const runAction = <T extends unknown[]>(action: (current: typeof state, ...args: T) => typeof state, ...args: T) => {
     setState((current) => {
       const next = action(current, ...args);
@@ -142,7 +148,10 @@ export function App() {
         return next;
       });
     }
-    if (view) setActiveView(view);
+    if (view) {
+      setActiveView(view);
+      setMoreOpen(false);
+    }
     setHighlightTargetId(targetId);
     window.setTimeout(() => {
       setHighlightTargetId((current) => (current === targetId ? null : current));
@@ -187,7 +196,7 @@ export function App() {
                 key={view.key}
                 className={`nav-item ${activeView === view.key ? "active" : ""}`}
                 disabled={disabled}
-                onClick={() => { setActiveView(view.key); setQuery(""); }}
+                onClick={() => selectView(view.key)}
                 title={disabled ? "AI Agent is unavailable until a real recording exists." : view.label}
               >
                 <Icon size={17} />
@@ -258,8 +267,8 @@ export function App() {
             </button>
             {moreOpen ? (
               <div className="top-menu">
-                <button onClick={() => { setActiveView("data"); setMoreOpen(false); }}>Open Data</button>
-                <button onClick={() => { setActiveView("settings"); setMoreOpen(false); }}>Open Settings</button>
+                <button onClick={() => selectView("data")}>Open Data</button>
+                <button onClick={() => selectView("settings")}>Open Settings</button>
                 <a href={getExportUrl("ndjson")}>Export NDJSON</a>
                 <a href={getExportUrl("markdown")}>Export Markdown</a>
               </div>

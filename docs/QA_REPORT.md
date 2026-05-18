@@ -2,6 +2,38 @@
 
 Date: 2026-05-18
 
+## 2026-05-18 Final Comprehensive Pass
+
+Commands passed:
+
+```bash
+npm run lint
+npm run build
+npm run test
+npm run test:smoke
+npm run playlens -- doctor
+```
+
+Live/manual checks:
+
+- Verified blank storage through `/api/tasks`, `/api/sessions`, `/api/events`, `/api/issues`, `/api/metrics`, `/api/artifacts`, `/api/ai/messages`, and all export formats. All returned zero real recording data.
+- Verified `POST /api/settings` persists the real `local-api.max-response-mb` setting.
+- Verified `POST /api/project-scopes` creates a real `.playlens/project.json`.
+- Ran the included demo project with `demo:pass`, `demo:fail`, and `demo:no-playwright` under PlayLens supervision.
+- Confirmed only the Playwright-importing demo runs appear as dashboard tasks in recording-backed mode, while the non-Playwright supervised shell does not create a real dashboard task.
+- Confirmed demo network response data reports real recorded statuses `200` and `500`.
+- Ran the real Chromium `actual-playwright-accuracy-workspace` live demo against temporary storage.
+- Confirmed live data grows over time: events, network requests/responses, DOM snapshots, console messages, screenshot artifacts, and system metric samples.
+- Confirmed stopping the live process changes the task/session status from `recording` to `stopped` instead of leaving stale running state.
+- Exercised the dashboard in the browser: nav pages, Replay/DOM/Console/Network/Logs tabs, Graph/Table tabs, graph depth control, Replay fullscreen enter/exit, More Actions menu, search, AI unavailable typing, API page, Data page, Settings page, and blank-state UI.
+- Confirmed Browser console had no warning/error logs during the UI pass.
+- Confirmed Clear Memory deletes only the configured temporary storage and returns the dashboard to the derived `Blank` task with no demo data and AI disabled.
+
+Fixed in this pass:
+
+- `playlens init` now reports likely npm scripts by script name and Playwright project context, so demo-style scripts such as `demo:pass` and `demo:fail` are not missed.
+- Left navigation now closes the top More Actions menu, preventing the menu from floating over Settings, API, Data, or AI Agent pages after a page switch.
+
 ## 2026-05-18 Local API Final Pass
 
 Commands passed:

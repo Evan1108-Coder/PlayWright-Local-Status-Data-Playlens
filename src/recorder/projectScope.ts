@@ -122,24 +122,35 @@ export function readProjectConfig(projectRoot = findProjectRoot() ?? process.cwd
 export function detectProject(rootPath = process.cwd()): ProjectDetection {
   const packageJsonPath = join(rootPath, "package.json");
   let npmScripts: string[] = [];
+  let hasPlaywrightDependency = false;
   if (existsSync(packageJsonPath)) {
     try {
-      const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { scripts?: Record<string, string> };
+      const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
+        scripts?: Record<string, string>;
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+      hasPlaywrightDependency = Boolean(pkg.dependencies?.playwright ?? pkg.devDependencies?.playwright ?? pkg.devDependencies?.["@playwright/test"]);
       npmScripts = Object.entries(pkg.scripts ?? {})
-        .filter(([, command]) => /playwright|e2e|test/i.test(command))
+        .filter(([name, command]) => {
+          const haystack = `${name} ${command}`;
+          return /playwright|e2e|test|spec|browser|checkout|demo/i.test(haystack);
+        })
         .map(([name]) => name);
     } catch {
       npmScripts = [];
     }
   }
 
+  const playwrightConfig = ["playwright.config.ts", "playwright.config.js", "playwright.config.mjs", "playwright.config.cjs"].some((file) =>
+    existsSync(join(rootPath, file))
+  );
+
   return {
     packageJson: existsSync(packageJsonPath),
-    playwrightConfig: ["playwright.config.ts", "playwright.config.js", "playwright.config.mjs", "playwright.config.cjs"].some((file) =>
-      existsSync(join(rootPath, file))
-    ),
+    playwrightConfig,
     testFiles: countLikelyPlaywrightFiles(rootPath),
-    npmScripts
+    npmScripts: playwrightConfig || hasPlaywrightDependency ? npmScripts : npmScripts.filter((name) => /playwright|e2e|test|spec/i.test(name))
   };
 }
 

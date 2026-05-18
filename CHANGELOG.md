@@ -2,6 +2,12 @@
 
 All notable changes to PlayLens will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- `playlens init` now detects likely npm scripts from script names and Playwright project context, not only command text.
+- Switching pages from the left navigation now closes the top More Actions menu.
+
 ## [0.1.0] - 2026-05-14
 
 ### Added
