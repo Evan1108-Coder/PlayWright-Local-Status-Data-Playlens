@@ -6,7 +6,7 @@ import { initProjectScope } from "../recorder/projectScope";
 import { runSupervisedCommand } from "../recorder/supervisor";
 import { RecorderStore } from "../recorder/storage";
 import { createSessionExport } from "../storage/sessionStore";
-import { createEmptyAppState } from "../state/appState";
+import { createEmptyAppState, createInitialAppState } from "../state/appState";
 
 const tempRoot = mkdtempSync(join(tmpdir(), "playlens-recorder-"));
 const storageRoot = join(tempRoot, ".playlens", "sessions");
@@ -44,6 +44,12 @@ try {
   assert.equal(exportedPayload.state.sessions.length, 1);
   assert.ok(exportedPayload.state.events.some((event) => event.kind === "playwright.detected"));
   assert.ok(exportedPayload.state.events.some((event) => event.kind === "system.metric"));
+
+  const staleExported = await createSessionExport("json", createInitialAppState(), { projectRoot: tempRoot }, { replaceTasksFromSessions: true });
+  const stalePayload = JSON.parse(staleExported.content) as { state: { tasks: Array<{ name: string }>; sessions: unknown[]; events: Array<{ kind: string }> } };
+  assert.equal(stalePayload.state.sessions.length, 1, "recording-backed exports should include real sessions");
+  assert.equal(stalePayload.state.tasks.length, 1, "recording-backed exports should not include stale UI tasks");
+  assert.equal(stalePayload.state.tasks[0].name.includes("Checkout"), false, "recording-backed exports should not leak demo task names");
 
   console.log("PlayLens recorder tests passed.");
 } finally {

@@ -14,6 +14,19 @@ export interface RecorderEvent {
   title: string;
   message: string;
   timestamp: string;
+  durationMs?: number;
+  source?: Record<string, unknown>;
+  url?: string;
+  locator?: string;
+  request?: {
+    method: string;
+    url: string;
+    status?: number;
+    durationMs?: number;
+    sizeBytes?: number;
+  };
+  artifactIds?: string[];
+  relatedIssueIds?: string[];
   data: Record<string, unknown>;
 }
 
@@ -115,6 +128,13 @@ export class RecorderStore {
       title: event.title,
       message: event.message,
       timestamp: new Date().toISOString(),
+      durationMs: event.durationMs,
+      source: event.source,
+      url: event.url,
+      locator: event.locator,
+      request: event.request,
+      artifactIds: event.artifactIds,
+      relatedIssueIds: event.relatedIssueIds,
       data: event.data ?? {}
     };
 

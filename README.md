@@ -6,7 +6,8 @@ PlayLens is a local-first observability dashboard for Playwright runs. It captur
 
 - **Investigation Dashboard** — Timeline, real captured evidence panes, metric charts, issue focus, network waterfall, graph/table causal views, and terminal output
 - **Task Management** — Track multiple Playwright tasks with status, entry files, and session associations
-- **Settings Control Center** — 13 settings groups covering general, capture, runtime, AI, privacy, integrations, and more
+- **Settings Control Center** — 14 settings groups covering general, capture, runtime, local API, AI, privacy, integrations, and more
+- **Local API** — Free local-only HTTP API and SDK methods for reading tasks, sessions, events, issues, metrics, settings, and exports from code
 - **AI Agent Panel** — MiniMax-powered operator with 4 permission modes and 8 tools (optional, disabled without API key)
 - **Data Access** — API health, session browser, and export links (JSON, NDJSON, Markdown)
 - **Global Search** — Search across tasks, settings, issues, events, and AI history
@@ -65,6 +66,38 @@ npm run dev -- --port 5173
 ```
 
 Open `http://127.0.0.1:5173/`. If the sessions folder is empty, the dashboard stays blank with a "No active recording" message.
+
+## Use The Local API From Code
+
+The backend binds to `127.0.0.1` by default, so the API is local to this device unless you intentionally expose it.
+
+```ts
+import { PlayLensClient } from "./src/sdk/client";
+
+const playlens = new PlayLensClient({
+  baseUrl: "http://127.0.0.1:4174"
+});
+
+const tasks = await playlens.listTasks();
+const events = await playlens.listEvents({ kind: "network.response" });
+const issues = await playlens.listIssues();
+const metrics = await playlens.listMetrics();
+```
+
+Useful routes:
+
+```text
+GET /api/manifest
+GET /api/tasks
+GET /api/sessions/:sessionId
+GET /api/sessions/:sessionId/events
+GET /api/events?taskId=<id>&kind=network.response
+GET /api/issues
+GET /api/metrics
+GET /api/settings
+POST /api/settings
+GET /api/export?format=json|ndjson|markdown
+```
 
 ## AI Features (Optional)
 

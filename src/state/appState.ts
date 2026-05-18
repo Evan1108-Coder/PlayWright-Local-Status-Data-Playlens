@@ -39,6 +39,7 @@ export function createInitialAppState(): PlayLensState {
 }
 
 export function createEmptyAppState(): PlayLensState {
+  const emptyAgent = structuredClone(initialAppState.aiAgent);
   return normalizeState({
     tasks: [],
     sessions: [],
@@ -47,7 +48,7 @@ export function createEmptyAppState(): PlayLensState {
     settingsGroups: ensureCompleteSettingsGroups(structuredClone(initialAppState.settingsGroups)),
     projectScopes: [],
     auditLog: [],
-    aiAgent: structuredClone(initialAppState.aiAgent),
+    aiAgent: { ...emptyAgent, messages: [], currentTask: undefined, status: "idle", updatedAt: new Date().toISOString() },
     uploadedFiles: [],
     systemMetrics: [],
     lastUpdatedAt: new Date().toISOString(),

@@ -1,6 +1,47 @@
 # PlayLens QA Report
 
-Date: 2026-05-16
+Date: 2026-05-18
+
+## 2026-05-18 Local API Final Pass
+
+Commands passed:
+
+```bash
+npm run lint
+npm run build
+npm run test
+npm run test:smoke
+```
+
+Live checks used a fresh temporary project with `PLAYLENS_STORAGE_DIR` pointed at that project's `.playlens/sessions`.
+
+Verified:
+
+- Empty recording-backed storage returns `0` tasks, sessions, events, issues, metrics, and AI messages.
+- Empty dashboard shows only the derived `Blank` task and no demo values.
+- `/api/manifest` reports local-only API metadata and 15 endpoint descriptions.
+- `npm run demo:fail` creates one real failed task, one session, one issue, one structured `network.response` with status `500`, one `console.message`, and one `dom.snapshot`.
+- Dashboard header, issue count, timeline, Network Waterfall, DOM tab, Console tab, and causal graph all reflect the same real data returned by the API.
+- `/api/tasks`, `/api/events?kind=network.response`, `/api/issues`, `/api/metrics`, `/api/settings`, and `/api/export` work against the same hydrated state.
+- `POST /api/settings` updates a local API setting and the value is visible again through `GET /api/settings`.
+- `PlayLensClient` can call `health`, `manifest`, `listTasks`, `listEvents`, `listIssues`, `listMetrics`, and `getSettings`.
+- Two concurrent supervised scripts appear as two separate `recording` tasks, then become `passed` tasks after exit.
+- Longer supervised runs emit system metrics through `/api/metrics`.
+- The new left-nav API page renders local server status, local-only access notes, current data counts, SDK examples, direct HTTP examples, endpoint list, and synced API settings.
+
+Fixed in this pass:
+
+- Recording-backed mode no longer leaks stale app-state tasks into blank or unrelated session folders.
+- Recording-backed exports no longer include mock sessions/events from `createInitialAppState`.
+- Empty state no longer carries mock AI chat messages.
+- Old unrelated project scopes are excluded while a focused `PLAYLENS_STORAGE_DIR` is active.
+- The demo's `[network]`, `[console]`, `[issue]`, `[dom]`, `page.goto`, and locator click output is parsed into structured events.
+- `/api/sessions` now reports hydrated session issue counts instead of raw manifest-only counts.
+- Replay empty-screenshot messaging now describes only the evidence actually captured.
+
+Known remaining limitation:
+
+- The included demo still uses a Playwright stub, so it proves detection and structured data flow but does not produce real browser screenshots/video. Real screenshot capture requires a real Playwright project emitting screenshot artifacts.
 
 ## Test Fixtures
 

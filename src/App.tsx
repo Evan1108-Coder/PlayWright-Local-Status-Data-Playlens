@@ -13,6 +13,7 @@ import {
   Settings,
   ShieldCheck,
   AlertTriangle,
+  Server,
 } from "lucide-react";
 import { AIAgentPanel } from "./components/AIAgentPanel";
 import { GlobalSearch } from "./components/GlobalSearch";
@@ -20,16 +21,18 @@ import { InvestigationDashboard } from "./components/InvestigationDashboard";
 import { SettingsPage } from "./components/SettingsPage";
 import { TaskRail } from "./components/TaskRail";
 import { DataAccessPage } from "./components/DataAccessPage";
+import { LocalApiPage } from "./components/LocalApiPage";
 import { createEmptyAppState, searchApp, appActions } from "./state/appState";
 import { hasMiniMaxApiKey } from "./agent/minimaxAdapter";
 import { addWatchedFolder, clearAppMemory, getExportUrl, getStoredState, saveStoredState } from "./lib/apiClient";
 import type { Task, TaskId } from "./data/types";
 
-type ViewKey = "dashboard" | "settings" | "agent" | "data";
+type ViewKey = "dashboard" | "settings" | "api" | "agent" | "data";
 
 const views: Array<{ key: ViewKey; label: string; icon: typeof LayoutDashboard }> = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { key: "settings", label: "Settings", icon: Settings },
+  { key: "api", label: "API", icon: Server },
   { key: "agent", label: "AI Agent", icon: Bot },
   { key: "data", label: "Data", icon: Database },
 ];
@@ -324,6 +327,9 @@ export function App() {
                   onClearHistory={() => runAction(appActions.clearAIChatHistory)}
                 />
               </div>
+            )}
+            {activeView === "api" && (
+              <LocalApiPage state={state} />
             )}
             {activeView === "data" && (
               <DataAccessPage

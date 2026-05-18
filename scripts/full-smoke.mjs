@@ -69,8 +69,20 @@ async function main() {
     const client = new PlayLensClient({ baseUrl: `http://127.0.0.1:${address.port}` });
     const health = await client.health();
     assert.equal(health.ok, true, "SDK health should reach backend");
+    const manifest = await client.manifest();
+    assert.equal(manifest.localOnly, true, "SDK manifest should describe the local-only API");
     const sessions = await client.listSessions();
     assert.equal(Array.isArray(sessions), true, "SDK sessions should be an array");
+    const tasks = await client.listTasks();
+    assert.equal(Array.isArray(tasks), true, "SDK tasks should be an array");
+    const events = await client.listEvents({ limit: 5 });
+    assert.equal(Array.isArray(events), true, "SDK events should be an array");
+    const issues = await client.listIssues();
+    assert.equal(Array.isArray(issues), true, "SDK issues should be an array");
+    const metrics = await client.listMetrics();
+    assert.equal(Array.isArray(metrics), true, "SDK metrics should be an array");
+    const settings = await client.getSettings();
+    assert.equal(settings.some((group) => group.id === "local-api"), true, "SDK settings should include local API settings");
     const search = await client.search("timeout");
     assert.equal(search.some((result) => result.label.includes("timeout")), true, "SDK search should reach backend search route");
 

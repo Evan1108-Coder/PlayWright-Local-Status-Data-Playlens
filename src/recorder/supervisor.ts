@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import { RecorderStore, type RecorderSeverity } from "./storage";
+import { RecorderStore, type RecorderEvent, type RecorderSeverity } from "./storage";
 import { findProjectRoot, resolveProjectStorageRoot, readProjectConfig, detectProject } from "./projectScope";
 import type { SessionId, TaskId } from "../data/types";
 
@@ -24,6 +24,12 @@ export interface RunSupervisorResult {
 }
 
 const PLAYLENS_MARKER_PREFIX = "[PlayLens]";
+type RecorderEventInput = Omit<Partial<RecorderEvent>, "id" | "sessionId" | "taskId" | "timestamp"> & {
+  kind: string;
+  title: string;
+  message: string;
+  data?: Record<string, unknown>;
+};
 
 export async function runSupervisedCommand(options: RunSupervisorOptions): Promise<RunSupervisorResult> {
   if (!options.command.length) {
@@ -99,6 +105,9 @@ export async function runSupervisedCommand(options: RunSupervisorOptions): Promi
       for (const marker of extractPlayLensMarkers(text)) {
         store.writeEvent(session, markerToEvent(marker));
       }
+      for (const event of extractStructuredTerminalEvents(text)) {
+        store.writeEvent(session, event);
+      }
     });
 
     child.stderr?.on("data", (chunk: Buffer) => {
@@ -107,6 +116,9 @@ export async function runSupervisedCommand(options: RunSupervisorOptions): Promi
       writeTerminalChunk(store, session, "stderr", text);
       for (const marker of extractPlayLensMarkers(text)) {
         store.writeEvent(session, markerToEvent(marker));
+      }
+      for (const event of extractStructuredTerminalEvents(text)) {
+        store.writeEvent(session, event);
       }
     });
 
@@ -290,4 +302,126 @@ function markerToEvent(marker: Record<string, unknown>) {
     message,
     data: marker
   };
+}
+
+function extractStructuredTerminalEvents(text: string): RecorderEventInput[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .flatMap((line) => {
+      if (line.startsWith("[network]")) return parseNetworkLine(line);
+      if (line.startsWith("[console]")) return parseConsoleLine(line);
+      if (line.startsWith("[issue]")) return parseIssueLine(line);
+      if (line.startsWith("[dom]")) return parseDomLine(line);
+      if (line.startsWith("[playwright-stub] page.goto")) return parseNavigationLine(line);
+      if (line.startsWith("[playwright-stub] locator.click")) return parseActionLine(line);
+      if (line.startsWith("[playwright-stub] chromium.launch")) {
+        return [{
+          kind: "browser.launched",
+          severity: "info" as RecorderSeverity,
+          title: "Browser launched",
+          message: line.replace("[playwright-stub] ", ""),
+          data: { browserName: "chromium", source: "playwright-stub", raw: line }
+        }];
+      }
+      return [];
+    });
+}
+
+function parseNetworkLine(line: string): RecorderEventInput[] {
+  const match = line.match(/^\[network]\s+([A-Z]+)\s+(.+?)\s+->\s+(\d{3})(?:\s+(\d+(?:\.\d+)?)ms)?/);
+  if (!match) return [];
+  const [, method, url, statusRaw, durationRaw] = match;
+  const status = Number(statusRaw);
+  const durationMs = durationRaw ? Number(durationRaw) : undefined;
+  return [{
+    kind: "network.response",
+    severity: status >= 500 ? "error" as RecorderSeverity : status >= 400 ? "warning" as RecorderSeverity : "info" as RecorderSeverity,
+    title: `${method} ${url}`,
+    message: `${method} ${url} returned ${status}`,
+    data: {
+      method,
+      url,
+      status,
+      durationMs,
+      request: { method, url, status, durationMs },
+      raw: line
+    }
+  }];
+}
+
+function parseConsoleLine(line: string): RecorderEventInput[] {
+  const message = line.replace(/^\[console]\s*/, "");
+  return [{
+    kind: "console.message",
+    severity: /error|exception|cannot|failed/i.test(message) ? "error" as RecorderSeverity : "warning" as RecorderSeverity,
+    title: "Console message",
+    message,
+    data: { level: /error|exception|cannot|failed/i.test(message) ? "error" : "warning", text: message, raw: line }
+  }];
+}
+
+function parseIssueLine(line: string): RecorderEventInput[] {
+  const message = line.replace(/^\[issue]\s*/, "");
+  return [{
+    kind: "issue.detected",
+    severity: "error" as RecorderSeverity,
+    title: message.slice(0, 90) || "Issue detected",
+    message,
+    data: { category: "test", raw: line }
+  }];
+}
+
+function parseDomLine(line: string): RecorderEventInput[] {
+  const message = line.replace(/^\[dom]\s*/, "");
+  const textMatch = message.match(/text=(["'])(.*?)\1/);
+  return [{
+    kind: "dom.snapshot",
+    severity: "info" as RecorderSeverity,
+    title: "DOM snapshot",
+    message,
+    data: {
+      afterText: textMatch?.[2] ?? message,
+      selector: message.split(/\s+/)[0],
+      raw: line
+    }
+  }];
+}
+
+function parseNavigationLine(line: string): RecorderEventInput[] {
+  const url = line.replace("[playwright-stub] page.goto", "").trim();
+  return [{
+    kind: "page.navigated",
+    severity: "info" as RecorderSeverity,
+    title: "Page navigated",
+    message: url,
+    url,
+    data: { url, raw: line }
+  }];
+}
+
+function parseActionLine(line: string): RecorderEventInput[] {
+  const jsonStart = line.indexOf("{");
+  const payload = jsonStart >= 0 ? safeJson(line.slice(jsonStart)) : undefined;
+  const role = typeof payload?.role === "string" ? payload.role : undefined;
+  const options = payload?.options && typeof payload.options === "object" ? payload.options as Record<string, unknown> : {};
+  const name = typeof options.name === "string" ? options.name : undefined;
+  const locator = role ? `getByRole('${role}'${name ? `, { name: '${name}' }` : ""})` : undefined;
+  return [{
+    kind: "action.completed",
+    severity: "info" as RecorderSeverity,
+    title: name ? `Clicked ${name}` : "Locator clicked",
+    message: name ? `Clicked ${name}` : line.replace("[playwright-stub] ", ""),
+    locator,
+    data: { role, options, raw: line }
+  }];
+}
+
+function safeJson(value: string): Record<string, unknown> | undefined {
+  try {
+    return JSON.parse(value) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
 }

@@ -1,4 +1,4 @@
-import type { AppState, SearchResult } from "../data/types";
+import type { AppState, Issue, SearchResult, SettingGroup, SystemMetricSample, Task, TimelineEvent } from "../data/types";
 import type { ApiHealth, StoredSessionSummary } from "../lib/apiClient";
 
 export interface PlayLensClientOptions {
@@ -32,6 +32,56 @@ export class PlayLensClient {
   async listSessions(): Promise<StoredSessionSummary[]> {
     const response = await this.get<StoredSessionSummary[] | { status: "ok"; sessions: StoredSessionSummary[] }>("/api/sessions");
     return Array.isArray(response) ? response : response.sessions;
+  }
+
+  async listTasks(): Promise<Task[]> {
+    const response = await this.get<{ status: "ok"; tasks: Task[] }>("/api/tasks");
+    return response.tasks;
+  }
+
+  async getTask(taskId: string): Promise<Task> {
+    const response = await this.get<{ status: "ok"; task: Task }>(`/api/tasks/${encodeURIComponent(taskId)}`);
+    return response.task;
+  }
+
+  async getSession(sessionId: string): Promise<{ session: AppState["sessions"][number]; events: TimelineEvent[]; issues: Issue[]; metrics: SystemMetricSample[] }> {
+    const response = await this.get<{ status: "ok"; session: AppState["sessions"][number]; events: TimelineEvent[]; issues: Issue[]; metrics: SystemMetricSample[] }>(`/api/sessions/${encodeURIComponent(sessionId)}`);
+    return {
+      session: response.session,
+      events: response.events,
+      issues: response.issues,
+      metrics: response.metrics
+    };
+  }
+
+  async listEvents(query: { taskId?: string; sessionId?: string; kind?: string; severity?: string; limit?: number } = {}): Promise<TimelineEvent[]> {
+    const response = await this.get<{ status: "ok"; events: TimelineEvent[] }>(`/api/events${toQueryString(query)}`);
+    return response.events;
+  }
+
+  async listIssues(query: { taskId?: string; sessionId?: string } = {}): Promise<Issue[]> {
+    const response = await this.get<{ status: "ok"; issues: Issue[] }>(`/api/issues${toQueryString(query)}`);
+    return response.issues;
+  }
+
+  async listMetrics(query: { taskId?: string; sessionId?: string } = {}): Promise<SystemMetricSample[]> {
+    const response = await this.get<{ status: "ok"; metrics: SystemMetricSample[] }>(`/api/metrics${toQueryString(query)}`);
+    return response.metrics;
+  }
+
+  async getSettings(): Promise<SettingGroup[]> {
+    const response = await this.get<{ status: "ok"; settingsGroups: SettingGroup[] }>("/api/settings");
+    return response.settingsGroups;
+  }
+
+  async updateSetting(settingIdOrPath: string, value: unknown): Promise<AppState> {
+    const key = settingIdOrPath.startsWith("setting-") ? "settingId" : "path";
+    const response = await this.post<{ status: "ok"; state: AppState }>("/api/settings", { [key]: settingIdOrPath, value });
+    return response.state;
+  }
+
+  async manifest(): Promise<unknown> {
+    return this.get<unknown>("/api/manifest");
   }
 
   async export(format: "json" | "ndjson" | "markdown"): Promise<string> {
@@ -70,6 +120,15 @@ export class PlayLensClient {
     }
     return response.json() as Promise<T>;
   }
+}
+
+function toQueryString(query: Record<string, string | number | undefined>): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  const text = params.toString();
+  return text ? `?${text}` : "";
 }
 
 export type { AppState, SearchResult, StoredSessionSummary };

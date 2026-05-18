@@ -180,6 +180,12 @@ function ReplayPanel({ selectedTask, session, selectedIssue, activeTime, events,
   const viewport = session?.browser.viewport;
   const beforeText = typeof domEvent?.data.beforeText === "string" ? domEvent.data.beforeText : "";
   const afterText = typeof domEvent?.data.afterText === "string" ? domEvent.data.afterText : "";
+  const capturedEvidence = [
+    networkEvents.length ? "network" : "",
+    consoleEvents.length ? "console" : "",
+    terminalEvents.length ? "terminal" : "",
+    domEvent ? "DOM" : ""
+  ].filter(Boolean);
   const visualArtifact = findVisualArtifact(selectedEvent) ?? [...events].reverse().map((event) => findVisualArtifact(event)).find(Boolean);
   const selectedIndex = Math.max(0, events.findIndex((event) => event.id === selectedEvent?.id));
   const canMoveBack = selectedIndex > 0;
@@ -235,7 +241,7 @@ function ReplayPanel({ selectedTask, session, selectedIssue, activeTime, events,
             <div className="real-replay-empty">
               <Monitor size={28} />
               <h3>No browser screenshot artifact captured</h3>
-              <p>This recording has real event, network, console, terminal, and DOM data, but no screenshot artifact. Run a recording with visual capture enabled to show the browser screen here.</p>
+              <p>{capturedEvidence.length ? `This recording has ${capturedEvidence.join(", ")} data, but no screenshot artifact. Run a recording with visual capture enabled to show the browser screen here.` : "This recording has event timing, but no browser screenshot artifact or rich browser evidence was captured."}</p>
               {selectedIssue ? <strong>{selectedIssue.title}</strong> : null}
             </div>
           )

@@ -1,11 +1,12 @@
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
+import { existsSync } from "node:fs";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { initProjectScope } from "../recorder/projectScope";
 import { ensureCompleteSettingsGroups } from "../settings/settingsCatalog";
 import type { ApiErrorBody, ExportFormat, HealthResponse, SessionsResponse, StateResponse, StateSaveResponse } from "./apiTypes";
-import { createEmptyAppState, createInitialAppState, searchApp, type PlayLensState } from "../state/appState";
+import { createEmptyAppState, createInitialAppState, searchApp, updateSetting, type PlayLensState } from "../state/appState";
 import {
   appendSessionEvent,
   createSession,
@@ -13,7 +14,6 @@ import {
   getStoragePaths,
   hydrateStateFromStoredSessions,
   initializeStorage,
-  listSessions,
   loadAppStateSnapshot,
   readSessionEvents,
   saveAppStateSnapshot
@@ -62,11 +62,7 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
       if (request.method === "GET" && url.pathname === "/api/state") {
         const eventLimit = parsePositiveInteger(url.searchParams.get("eventLimit"));
         const compactRuntimeMarkers = url.searchParams.get("compactRuntimeMarkers") === "1";
-        const state = await hydrateStateFromStoredSessions(await loadOrCreateState(storeOptions), storeOptions, {
-          eventLimit,
-          compactRuntimeMarkers,
-          replaceTasksFromSessions: Boolean(process.env.PLAYLENS_STORAGE_DIR)
-        });
+        const state = await getHydratedState(storeOptions, { eventLimit, compactRuntimeMarkers });
         sendJson<StateResponse>(response, 200, { status: "ok", state });
         return;
       }
@@ -89,11 +85,7 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
         const state = await loadOrCreateState(storeOptions);
         const next = addInitializedProjectScope(state, body.folderPath);
         const saved = await saveAppStateSnapshot(process.env.PLAYLENS_STORAGE_DIR ? createRecordingBackedState(next) : next, storeOptions);
-        const hydrated = await hydrateStateFromStoredSessions(await loadOrCreateState(storeOptions), storeOptions, {
-          eventLimit: 140,
-          compactRuntimeMarkers: true,
-          replaceTasksFromSessions: Boolean(process.env.PLAYLENS_STORAGE_DIR)
-        });
+        const hydrated = await getHydratedState(storeOptions, { eventLimit: 140, compactRuntimeMarkers: true });
         sendJson(response, 200, { status: "ok", savedAt: saved.savedAt, state: hydrated });
         return;
       }
@@ -119,17 +111,132 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
       }
 
       if (request.method === "GET" && url.pathname === "/api/sessions") {
-        await loadOrCreateState(storeOptions);
-        const sessions = await listSessions(storeOptions);
+        const state = await getHydratedState(storeOptions);
+        const sessions = state.sessions.map((session) => {
+          const task = state.tasks.find((item) => item.id === session.taskId);
+          return {
+            id: session.id,
+            taskId: session.taskId,
+            title: session.title,
+            status: session.status,
+            command: task?.command,
+            cwd: task?.cwd,
+            browserName: session.browser.name,
+            startedAt: session.startedAt,
+            endedAt: session.endedAt,
+            updatedAt: session.endedAt ?? session.startedAt,
+            currentUrl: session.currentUrl,
+            eventCount: session.eventIds.length,
+            issueCount: session.issueIds.length
+          };
+        });
         sendJson<SessionsResponse>(response, 200, { status: "ok", sessions });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/manifest") {
+        const paths = getStoragePaths(storeOptions);
+        sendJson(response, 200, createApiManifest(paths.sessionsDir));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/tasks") {
+        const state = await getHydratedState(storeOptions);
+        sendJson(response, 200, { status: "ok", tasks: state.tasks });
+        return;
+      }
+
+      const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
+      if (request.method === "GET" && taskMatch) {
+        const state = await getHydratedState(storeOptions);
+        const task = state.tasks.find((item) => item.id === taskMatch[1]);
+        if (!task) {
+          sendError(response, 404, "task_not_found", `Task not found: ${taskMatch[1]}`);
+          return;
+        }
+        sendJson(response, 200, { status: "ok", task });
+        return;
+      }
+
+      const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)$/);
+      if (request.method === "GET" && sessionMatch) {
+        const state = await getHydratedState(storeOptions);
+        const session = state.sessions.find((item) => item.id === sessionMatch[1]);
+        if (!session) {
+          sendError(response, 404, "session_not_found", `Session not found: ${sessionMatch[1]}`);
+          return;
+        }
+        sendJson(response, 200, {
+          status: "ok",
+          session,
+          events: state.events.filter((event) => event.sessionId === session.id),
+          issues: state.issues.filter((issue) => issue.sessionId === session.id),
+          metrics: state.systemMetrics.filter((metric) => metric.sessionId === session.id)
+        });
+        return;
+      }
+
+      const sessionEventsMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/events$/);
+      if (request.method === "GET" && sessionEventsMatch) {
+        const state = await getHydratedState(storeOptions);
+        const events = applyEventQuery(state.events.filter((event) => event.sessionId === sessionEventsMatch[1]), url);
+        sendJson(response, 200, { status: "ok", events });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/events") {
+        const state = await getHydratedState(storeOptions);
+        sendJson(response, 200, { status: "ok", events: applyEventQuery(state.events, url) });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/issues") {
+        const state = await getHydratedState(storeOptions);
+        const taskId = url.searchParams.get("taskId");
+        const sessionId = url.searchParams.get("sessionId");
+        const issues = state.issues.filter((issue) =>
+          (!taskId || issue.taskId === taskId) &&
+          (!sessionId || issue.sessionId === sessionId)
+        );
+        sendJson(response, 200, { status: "ok", issues });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/metrics") {
+        const state = await getHydratedState(storeOptions);
+        const taskId = url.searchParams.get("taskId");
+        const sessionId = url.searchParams.get("sessionId");
+        const metrics = state.systemMetrics.filter((metric) =>
+          (!taskId || metric.taskId === taskId) &&
+          (!sessionId || metric.sessionId === sessionId)
+        );
+        sendJson(response, 200, { status: "ok", metrics });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/settings") {
+        const state = await getHydratedState(storeOptions);
+        sendJson(response, 200, { status: "ok", settingsGroups: state.settingsGroups });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/settings") {
+        const body = await readJsonBody<{ settingId?: string; path?: string; value?: unknown }>(request);
+        const current = await loadOrCreateState(storeOptions);
+        const key = body.settingId ?? body.path;
+        if (!key) {
+          sendError(response, 400, "setting_required", "settingId or path is required.");
+          return;
+        }
+        const next = updateSetting(current, key, body.value as PlayLensState["settingsGroups"][number]["items"][number]["value"]);
+        await saveAppStateSnapshot(process.env.PLAYLENS_STORAGE_DIR ? createRecordingBackedState(next) : next, storeOptions);
+        sendJson(response, 200, { status: "ok", state: await getHydratedState(storeOptions) });
         return;
       }
 
       if (request.method === "GET" && url.pathname === "/api/search") {
         const query = url.searchParams.get("q") ?? "";
-        const state = await hydrateStateFromStoredSessions(await loadOrCreateState(storeOptions), storeOptions, {
-          replaceTasksFromSessions: Boolean(process.env.PLAYLENS_STORAGE_DIR)
-        });
+        const state = await getHydratedState(storeOptions);
         sendJson(response, 200, searchApp(state, query));
         return;
       }
@@ -231,6 +338,14 @@ async function loadOrCreateState(storeOptions: { projectRoot?: string }): Promis
   return state;
 }
 
+async function getHydratedState(storeOptions: { projectRoot?: string }, options: { eventLimit?: number; compactRuntimeMarkers?: boolean } = {}): Promise<PlayLensState> {
+  return hydrateStateFromStoredSessions(await loadOrCreateState(storeOptions), storeOptions, {
+    eventLimit: options.eventLimit,
+    compactRuntimeMarkers: options.compactRuntimeMarkers,
+    replaceTasksFromSessions: Boolean(process.env.PLAYLENS_STORAGE_DIR)
+  });
+}
+
 function createRecordingBackedState(existing: PlayLensState | null): PlayLensState {
   const empty = createEmptyAppState();
   if (!existing) return empty;
@@ -238,15 +353,75 @@ function createRecordingBackedState(existing: PlayLensState | null): PlayLensSta
     ...empty,
     tasks: existing.tasks,
     settingsGroups: ensureCompleteSettingsGroups(existing.settingsGroups),
-    projectScopes: existing.projectScopes,
+    projectScopes: existing.projectScopes.filter((scope) => isRelevantProjectScope(scope.rootPath)),
     auditLog: existing.auditLog,
-    aiAgent: existing.aiAgent,
-    agent: existing.aiAgent,
+    aiAgent: { ...existing.aiAgent, messages: [] },
+    agent: { ...existing.aiAgent, messages: [] },
     uploadedFiles: existing.uploadedFiles,
     lastUpdatedAt: existing.lastUpdatedAt,
-    selectedTaskId: existing.selectedTaskId ?? empty.selectedTaskId,
     system: empty.system
   };
+}
+
+function isRelevantProjectScope(rootPath: string): boolean {
+  if (!existsSync(rootPath)) return false;
+  if (!process.env.PLAYLENS_STORAGE_DIR) return true;
+  const storageProjectRoot = path.dirname(path.dirname(path.resolve(process.env.PLAYLENS_STORAGE_DIR)));
+  return path.resolve(rootPath) === storageProjectRoot;
+}
+
+function createApiManifest(storageRoot: string) {
+  const baseUrl = `http://${process.env.PLAYLENS_API_HOST ?? DEFAULT_HOST}:${process.env.PLAYLENS_API_PORT ?? DEFAULT_PORT}`;
+  return {
+    status: "ok",
+    name: "PlayLens Local API",
+    version: "0.1.0",
+    localOnly: true,
+    defaultBaseUrl: baseUrl,
+    storageRoot,
+    auth: {
+      required: false,
+      note: "The default server binds to 127.0.0.1 for local-device access only."
+    },
+    endpoints: [
+      { method: "GET", path: "/api/health", description: "Backend health, version, and active storage root." },
+      { method: "GET", path: "/api/state", description: "Complete hydrated PlayLens state for dashboards and custom tools." },
+      { method: "GET", path: "/api/tasks", description: "Task list derived from current recording sessions." },
+      { method: "GET", path: "/api/tasks/:taskId", description: "One task by id." },
+      { method: "GET", path: "/api/sessions", description: "Stored session summaries." },
+      { method: "GET", path: "/api/sessions/:sessionId", description: "One session with its events, issues, and metrics." },
+      { method: "GET", path: "/api/sessions/:sessionId/events", description: "Events for one session. Supports kind and limit query params." },
+      { method: "GET", path: "/api/events", description: "Events filtered by taskId, sessionId, kind, and limit." },
+      { method: "GET", path: "/api/issues", description: "Issues filtered by taskId or sessionId." },
+      { method: "GET", path: "/api/metrics", description: "CPU and memory samples filtered by taskId or sessionId." },
+      { method: "GET", path: "/api/settings", description: "Durable settings groups used by UI, recorder, SDK, and API." },
+      { method: "POST", path: "/api/settings", description: "Update one setting with { settingId | path, value }." },
+      { method: "GET", path: "/api/search?q=<query>", description: "Search tasks, events, issues, settings, AI messages, and scopes." },
+      { method: "GET", path: "/api/export?format=json|ndjson|markdown", description: "Export recorded data for code, reports, or archives." },
+      { method: "GET", path: "/api/artifact?sessionId=<id>&path=<file>", description: "Read a local artifact inside one session." }
+    ],
+    sdkExample: [
+      "import { PlayLensClient } from './src/sdk/client';",
+      "const client = new PlayLensClient({ baseUrl: 'http://127.0.0.1:4174' });",
+      "const tasks = await client.listTasks();",
+      "const events = await client.listEvents({ kind: 'network.response' });"
+    ].join("\n")
+  };
+}
+
+function applyEventQuery(events: PlayLensState["events"], url: URL): PlayLensState["events"] {
+  const taskId = url.searchParams.get("taskId");
+  const sessionId = url.searchParams.get("sessionId");
+  const kind = url.searchParams.get("kind");
+  const severity = url.searchParams.get("severity");
+  const limit = parsePositiveInteger(url.searchParams.get("limit"));
+  const filtered = events.filter((event) =>
+    (!taskId || event.taskId === taskId) &&
+    (!sessionId || event.sessionId === sessionId) &&
+    (!kind || event.kind === kind) &&
+    (!severity || event.severity === severity)
+  );
+  return limit ? filtered.slice(-limit) : filtered;
 }
 
 function addInitializedProjectScope(state: PlayLensState, folderPath: string): PlayLensState {

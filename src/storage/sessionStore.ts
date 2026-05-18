@@ -376,9 +376,20 @@ export async function hydrateStateFromStoredSessions(state: PlayLensState, optio
     hydratedMetrics.push(...metrics);
   }
 
-  if (hydratedSessions.length === 0 && hydratedTasks.length === 0 && hydratedEvents.length === 0 && hydratedIssues.length === 0 && hydratedMetrics.length === 0) return state;
+  if (hydratedSessions.length === 0 && hydratedTasks.length === 0 && hydratedEvents.length === 0 && hydratedIssues.length === 0 && hydratedMetrics.length === 0) {
+    if (!hydrateOptions.replaceTasksFromSessions) return state;
+    return {
+      ...state,
+      tasks: [],
+      sessions: [],
+      events: [],
+      issues: [],
+      systemMetrics: [],
+      selectedTaskId: "task-empty" as TaskId
+    };
+  }
   const nextTasks = hydrateOptions.replaceTasksFromSessions
-    ? [...hydratedTasks, ...state.tasks.filter((task) => !hydratedTaskIds.has(task.id))]
+    ? hydratedTasks
     : [...state.tasks, ...hydratedTasks];
   const nextSelectedTaskId = nextTasks.some((task) => task.id === state.selectedTaskId)
     ? state.selectedTaskId
@@ -386,10 +397,10 @@ export async function hydrateStateFromStoredSessions(state: PlayLensState, optio
   return {
     ...state,
     tasks: nextTasks,
-    sessions: [...state.sessions, ...hydratedSessions],
-    events: [...state.events, ...hydratedEvents],
-    issues: [...state.issues, ...hydratedIssues],
-    systemMetrics: [...state.systemMetrics, ...hydratedMetrics],
+    sessions: hydrateOptions.replaceTasksFromSessions ? hydratedSessions : [...state.sessions, ...hydratedSessions],
+    events: hydrateOptions.replaceTasksFromSessions ? hydratedEvents : [...state.events, ...hydratedEvents],
+    issues: hydrateOptions.replaceTasksFromSessions ? hydratedIssues : [...state.issues, ...hydratedIssues],
+    systemMetrics: hydrateOptions.replaceTasksFromSessions ? hydratedMetrics : [...state.systemMetrics, ...hydratedMetrics],
     selectedTaskId: nextSelectedTaskId
   };
 }

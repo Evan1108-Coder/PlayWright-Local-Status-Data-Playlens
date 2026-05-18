@@ -93,6 +93,40 @@ npm run playlens -- doctor
 npm run playlens -- help
 ```
 
+## Using the Local API
+
+Start the backend:
+
+```bash
+npm run api
+```
+
+The default API is local to this device:
+
+```text
+http://127.0.0.1:4174
+```
+
+Useful routes:
+
+```bash
+curl http://127.0.0.1:4174/api/manifest
+curl http://127.0.0.1:4174/api/tasks
+curl "http://127.0.0.1:4174/api/events?kind=network.response&limit=50"
+curl http://127.0.0.1:4174/api/issues
+curl http://127.0.0.1:4174/api/metrics
+```
+
+Code can use the SDK in `src/sdk/client.ts`:
+
+```ts
+import { PlayLensClient } from "./src/sdk/client";
+
+const playlens = new PlayLensClient();
+const tasks = await playlens.listTasks();
+const events = await playlens.listEvents({ kind: "network.response" });
+```
+
 ## Try the Demo Project
 
 ```bash

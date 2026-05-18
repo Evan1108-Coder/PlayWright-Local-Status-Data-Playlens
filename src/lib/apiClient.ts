@@ -25,6 +25,27 @@ export interface StoredSessionSummary {
   endedAt?: string;
 }
 
+export interface ApiEndpointDescription {
+  method: string;
+  path: string;
+  description: string;
+}
+
+export interface ApiManifest {
+  status: "ok";
+  name: string;
+  version: string;
+  localOnly: boolean;
+  defaultBaseUrl: string;
+  storageRoot: string;
+  auth: {
+    required: boolean;
+    note: string;
+  };
+  endpoints: ApiEndpointDescription[];
+  sdkExample: string;
+}
+
 export interface ApiClientResult<T> {
   ok: boolean;
   data?: T;
@@ -75,6 +96,33 @@ export async function getStoredSessions(): Promise<ApiClientResult<StoredSession
     data: result.data.sessions.map((session) => ({
       ...session
     }))
+  };
+}
+
+export async function getApiManifest(): Promise<ApiClientResult<ApiManifest>> {
+  return getJson<ApiManifest>("/api/manifest");
+}
+
+export async function getLocalApiSummary(): Promise<ApiClientResult<{
+  tasks: number;
+  sessions: number;
+  events: number;
+  issues: number;
+  metrics: number;
+  settingsGroups: number;
+}>> {
+  const result = await getStoredState();
+  if (!result.ok || !result.data) return { ok: false, error: result.error };
+  return {
+    ok: true,
+    data: {
+      tasks: result.data.tasks.length,
+      sessions: result.data.sessions.length,
+      events: result.data.events.length,
+      issues: result.data.issues.length,
+      metrics: result.data.systemMetrics.length,
+      settingsGroups: result.data.settingsGroups.length
+    }
   };
 }
 
