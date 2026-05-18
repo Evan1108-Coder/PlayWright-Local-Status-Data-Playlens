@@ -46,6 +46,15 @@ export interface ApiManifest {
   sdkExample: string;
 }
 
+export interface ArtifactIndexItem {
+  sessionId: string;
+  relativePath: string;
+  absolutePath: string;
+  sizeBytes: number;
+  modifiedAt: string;
+  url: string;
+}
+
 export interface ApiClientResult<T> {
   ok: boolean;
   data?: T;
@@ -110,18 +119,28 @@ export async function getLocalApiSummary(): Promise<ApiClientResult<{
   issues: number;
   metrics: number;
   settingsGroups: number;
+  artifacts: number;
+  auditRecords: number;
+  projectScopes: number;
+  aiMessages: number;
+  uploadedFiles: number;
 }>> {
-  const result = await getStoredState();
-  if (!result.ok || !result.data) return { ok: false, error: result.error };
+  const [stateResult, artifactResult] = await Promise.all([getStoredState(), getJson<{ status: "ok"; artifacts: ArtifactIndexItem[] }>("/api/artifacts")]);
+  if (!stateResult.ok || !stateResult.data) return { ok: false, error: stateResult.error };
   return {
     ok: true,
     data: {
-      tasks: result.data.tasks.length,
-      sessions: result.data.sessions.length,
-      events: result.data.events.length,
-      issues: result.data.issues.length,
-      metrics: result.data.systemMetrics.length,
-      settingsGroups: result.data.settingsGroups.length
+      tasks: stateResult.data.tasks.length,
+      sessions: stateResult.data.sessions.length,
+      events: stateResult.data.events.length,
+      issues: stateResult.data.issues.length,
+      metrics: stateResult.data.systemMetrics.length,
+      settingsGroups: stateResult.data.settingsGroups.length,
+      artifacts: artifactResult.ok ? artifactResult.data?.artifacts.length ?? 0 : 0,
+      auditRecords: stateResult.data.auditLog.length,
+      projectScopes: stateResult.data.projectScopes.length,
+      aiMessages: stateResult.data.aiAgent.messages.length,
+      uploadedFiles: stateResult.data.uploadedFiles.length
     }
   };
 }

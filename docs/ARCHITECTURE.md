@@ -120,6 +120,7 @@ Current API access paths:
 
 - TypeScript SDK through `PlayLensClient`.
 - Local HTTP routes for health, manifest, tasks, sessions, events, issues, metrics, settings, search, artifacts, and exports.
+- Raw/detail routes for saved state, hydrated state, raw session manifests, raw event files, storage file indexes, project scopes, audit logs, AI messages, uploaded-file metadata, and artifact indexes.
 - JSON, NDJSON, and Markdown exports.
 - CLI commands.
 
@@ -137,8 +138,18 @@ GET /api/issues
 GET /api/metrics
 GET /api/settings
 POST /api/settings
+GET /api/project-scopes
+GET /api/audit
+GET /api/ai/messages
+GET /api/uploads
 GET /api/search?q=<query>
 GET /api/export?format=json|ndjson|markdown
+GET /api/artifacts
+GET /api/raw/state
+GET /api/raw/files/index
+GET /api/raw/sessions
+GET /api/raw/sessions/:sessionId/manifest
+GET /api/raw/sessions/:sessionId/events
 ```
 
 Future public access paths:

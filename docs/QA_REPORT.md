@@ -19,12 +19,14 @@ Verified:
 
 - Empty recording-backed storage returns `0` tasks, sessions, events, issues, metrics, and AI messages.
 - Empty dashboard shows only the derived `Blank` task and no demo values.
-- `/api/manifest` reports local-only API metadata and 15 endpoint descriptions.
+- `/api/manifest` reports local-only API metadata and the full endpoint catalog.
+- The local API now includes raw/detail routes for hydrated state, saved state, raw session manifests, raw event files, storage file index, artifact index, project scopes, audit logs, AI messages, and upload metadata.
 - `npm run demo:fail` creates one real failed task, one session, one issue, one structured `network.response` with status `500`, one `console.message`, and one `dom.snapshot`.
 - Dashboard header, issue count, timeline, Network Waterfall, DOM tab, Console tab, and causal graph all reflect the same real data returned by the API.
 - `/api/tasks`, `/api/events?kind=network.response`, `/api/issues`, `/api/metrics`, `/api/settings`, and `/api/export` work against the same hydrated state.
 - `POST /api/settings` updates a local API setting and the value is visible again through `GET /api/settings`.
 - `PlayLensClient` can call `health`, `manifest`, `listTasks`, `listEvents`, `listIssues`, `listMetrics`, and `getSettings`.
+- `PlayLensClient` can also call `getRawState`, `listRawSessions`, `getRawSessionManifest`, `getRawSessionEvents`, `listArtifacts`, `listProjectScopes`, `listAuditLog`, `getAiMessages`, and `listUploadedFiles`.
 - Two concurrent supervised scripts appear as two separate `recording` tasks, then become `passed` tasks after exit.
 - Longer supervised runs emit system metrics through `/api/metrics`.
 - The new left-nav API page renders local server status, local-only access notes, current data counts, SDK examples, direct HTTP examples, endpoint list, and synced API settings.

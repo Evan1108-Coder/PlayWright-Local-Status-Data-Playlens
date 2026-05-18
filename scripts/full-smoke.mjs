@@ -83,6 +83,20 @@ async function main() {
     assert.equal(Array.isArray(metrics), true, "SDK metrics should be an array");
     const settings = await client.getSettings();
     assert.equal(settings.some((group) => group.id === "local-api"), true, "SDK settings should include local API settings");
+    const rawState = await client.getRawState();
+    assert.equal(rawState.status, "ok", "SDK raw state should reach raw state route");
+    const rawSessions = await client.listRawSessions();
+    assert.equal(rawSessions.status, "ok", "SDK raw sessions should reach raw sessions route");
+    const artifacts = await client.listArtifacts();
+    assert.equal(Array.isArray(artifacts), true, "SDK artifacts should be an array");
+    const projectScopes = await client.listProjectScopes();
+    assert.equal(Array.isArray(projectScopes), true, "SDK project scopes should be an array");
+    const auditLog = await client.listAuditLog();
+    assert.equal(Array.isArray(auditLog), true, "SDK audit log should be an array");
+    const uploadedFiles = await client.listUploadedFiles();
+    assert.equal(Array.isArray(uploadedFiles), true, "SDK uploaded files should be an array");
+    const aiMessages = await client.getAiMessages();
+    assert.equal(Array.isArray(aiMessages), true, "SDK AI messages should be an array");
     const search = await client.search("timeout");
     assert.equal(search.some((result) => result.label.includes("timeout")), true, "SDK search should reach backend search route");
 

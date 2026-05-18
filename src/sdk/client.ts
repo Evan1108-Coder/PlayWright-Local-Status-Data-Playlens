@@ -1,5 +1,5 @@
-import type { AppState, Issue, SearchResult, SettingGroup, SystemMetricSample, Task, TimelineEvent } from "../data/types";
-import type { ApiHealth, StoredSessionSummary } from "../lib/apiClient";
+import type { AppState, AuditLogRecord, Issue, ProjectScope, SearchResult, SettingGroup, SystemMetricSample, Task, TimelineEvent, UploadedFileMetadata } from "../data/types";
+import type { ApiHealth, ArtifactIndexItem, StoredSessionSummary } from "../lib/apiClient";
 
 export interface PlayLensClientOptions {
   baseUrl?: string;
@@ -82,6 +82,47 @@ export class PlayLensClient {
 
   async manifest(): Promise<unknown> {
     return this.get<unknown>("/api/manifest");
+  }
+
+  async listArtifacts(sessionId?: string): Promise<ArtifactIndexItem[]> {
+    const response = await this.get<{ status: "ok"; artifacts: ArtifactIndexItem[] }>(`/api/artifacts${toQueryString({ sessionId })}`);
+    return response.artifacts;
+  }
+
+  async listProjectScopes(): Promise<ProjectScope[]> {
+    const response = await this.get<{ status: "ok"; projectScopes: ProjectScope[] }>("/api/project-scopes");
+    return response.projectScopes;
+  }
+
+  async listAuditLog(): Promise<AuditLogRecord[]> {
+    const response = await this.get<{ status: "ok"; auditLog: AuditLogRecord[] }>("/api/audit");
+    return response.auditLog;
+  }
+
+  async listUploadedFiles(): Promise<UploadedFileMetadata[]> {
+    const response = await this.get<{ status: "ok"; uploadedFiles: UploadedFileMetadata[] }>("/api/uploads");
+    return response.uploadedFiles;
+  }
+
+  async getAiMessages(): Promise<AppState["aiAgent"]["messages"]> {
+    const response = await this.get<{ status: "ok"; messages: AppState["aiAgent"]["messages"]; agent: AppState["aiAgent"] }>("/api/ai/messages");
+    return response.messages;
+  }
+
+  async getRawState(): Promise<unknown> {
+    return this.get<unknown>("/api/raw/state");
+  }
+
+  async listRawSessions(): Promise<unknown> {
+    return this.get<unknown>("/api/raw/sessions");
+  }
+
+  async getRawSessionManifest(sessionId: string): Promise<unknown> {
+    return this.get<unknown>(`/api/raw/sessions/${encodeURIComponent(sessionId)}/manifest`);
+  }
+
+  async getRawSessionEvents(sessionId: string): Promise<unknown> {
+    return this.get<unknown>(`/api/raw/sessions/${encodeURIComponent(sessionId)}/events`);
   }
 
   async export(format: "json" | "ndjson" | "markdown"): Promise<string> {

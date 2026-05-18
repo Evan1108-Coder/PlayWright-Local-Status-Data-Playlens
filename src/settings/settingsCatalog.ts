@@ -58,6 +58,10 @@ function supplementalItems(groupId: string): SettingItem[] {
       make("include-ai-history", "Include AI history", "Expose AI chat messages in local API state, search, and exports when enabled.", true, "toggle"),
       make("include-terminal", "Include terminal output", "Expose supervised stdout and stderr records through events and exports.", true, "toggle"),
       make("redact-secrets", "Redact secrets", "Redact obvious tokens, authorization headers, and API keys before local API responses.", true, "toggle"),
+      make("raw-endpoints", "Expose raw endpoints", "Expose raw state, manifests, event files, and file indexes for advanced local tools.", true, "toggle"),
+      make("include-audit", "Include audit log", "Expose local audit records through the API and exports.", true, "toggle"),
+      make("include-project-scopes", "Include project scopes", "Expose watched-folder metadata and project scope configuration.", true, "toggle"),
+      make("include-upload-metadata", "Include upload metadata", "Expose uploaded file metadata without serving original files unless artifacts are enabled.", true, "toggle"),
       make("schema-version", "Schema version", "Stable schema version advertised through /api/manifest.", "2026.05-local", "text"),
     ],
     "data-history": [

@@ -10,7 +10,7 @@ interface LocalApiPageProps {
 export function LocalApiPage({ state }: LocalApiPageProps) {
   const [health, setHealth] = useState<ApiHealth | null>(null);
   const [manifest, setManifest] = useState<ApiManifest | null>(null);
-  const [summary, setSummary] = useState<{ tasks: number; sessions: number; events: number; issues: number; metrics: number; settingsGroups: number } | null>(null);
+  const [summary, setSummary] = useState<{ tasks: number; sessions: number; events: number; issues: number; metrics: number; settingsGroups: number; artifacts: number; auditRecords: number; projectScopes: number; aiMessages: number; uploadedFiles: number } | null>(null);
   const [endpointFilter, setEndpointFilter] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -66,7 +66,7 @@ export function LocalApiPage({ state }: LocalApiPageProps) {
         <article className="api-status-panel">
           <h3><Database size={16} /> Current Data</h3>
           <strong>{summary?.sessions ?? state.sessions.length} sessions</strong>
-          <span>{summary?.events ?? state.events.length} events · {summary?.issues ?? state.issues.length} issues · {summary?.metrics ?? state.systemMetrics.length} metrics</span>
+          <span>{summary?.events ?? state.events.length} events · {summary?.issues ?? state.issues.length} issues · {summary?.metrics ?? state.systemMetrics.length} metrics · {summary?.artifacts ?? 0} artifacts</span>
           <p>These counts are hydrated from the same source as the dashboard.</p>
         </article>
       </div>
@@ -83,8 +83,9 @@ const playlens = new PlayLensClient({
 const tasks = await playlens.listTasks();
 const events = await playlens.listEvents({ kind: "network.response" });
 const issues = await playlens.listIssues();
-const metrics = await playlens.listMetrics();`}</pre>
-          <button onClick={() => copy("sdk", `import { PlayLensClient } from "./src/sdk/client";\nconst playlens = new PlayLensClient({ baseUrl: "${baseUrl}" });\nconst tasks = await playlens.listTasks();\nconst events = await playlens.listEvents({ kind: "network.response" });`)}>
+const metrics = await playlens.listMetrics();
+const raw = await playlens.getRawState();`}</pre>
+          <button onClick={() => copy("sdk", `import { PlayLensClient } from "./src/sdk/client";\nconst playlens = new PlayLensClient({ baseUrl: "${baseUrl}" });\nconst tasks = await playlens.listTasks();\nconst events = await playlens.listEvents({ kind: "network.response" });\nconst raw = await playlens.getRawState();`)}>
             <Link2 size={13} /> {copied === "sdk" ? "Copied" : "Copy SDK example"}
           </button>
         </article>
@@ -96,8 +97,10 @@ curl ${baseUrl}/api/tasks
 curl "${baseUrl}/api/events?kind=network.response&limit=50"
 curl ${baseUrl}/api/issues
 curl ${baseUrl}/api/metrics
+curl ${baseUrl}/api/raw/state
+curl ${baseUrl}/api/raw/sessions
 curl ${getExportUrl("json")}`}</pre>
-          <button onClick={() => copy("curl", `curl ${baseUrl}/api/health\ncurl ${baseUrl}/api/tasks\ncurl "${baseUrl}/api/events?kind=network.response&limit=50"`)}> 
+          <button onClick={() => copy("curl", `curl ${baseUrl}/api/health\ncurl ${baseUrl}/api/tasks\ncurl "${baseUrl}/api/events?kind=network.response&limit=50"\ncurl ${baseUrl}/api/raw/state`)}> 
             <Link2 size={13} /> {copied === "curl" ? "Copied" : "Copy curl example"}
           </button>
         </article>
@@ -131,6 +134,38 @@ curl ${getExportUrl("json")}`}</pre>
           <Settings2 size={16} />
         </div>
         <div className="api-settings-grid">
+          <article className="api-setting-row">
+            <ShieldCheck size={14} />
+            <div>
+              <strong>Project scopes</strong>
+              <span>/api/project-scopes</span>
+            </div>
+            <em>{summary?.projectScopes ?? state.projectScopes.length}</em>
+          </article>
+          <article className="api-setting-row">
+            <ShieldCheck size={14} />
+            <div>
+              <strong>Audit records</strong>
+              <span>/api/audit</span>
+            </div>
+            <em>{summary?.auditRecords ?? state.auditLog.length}</em>
+          </article>
+          <article className="api-setting-row">
+            <ShieldCheck size={14} />
+            <div>
+              <strong>AI messages</strong>
+              <span>/api/ai/messages</span>
+            </div>
+            <em>{summary?.aiMessages ?? state.aiAgent.messages.length}</em>
+          </article>
+          <article className="api-setting-row">
+            <ShieldCheck size={14} />
+            <div>
+              <strong>Uploaded files</strong>
+              <span>/api/uploads</span>
+            </div>
+            <em>{summary?.uploadedFiles ?? state.uploadedFiles.length}</em>
+          </article>
           {(apiSettings?.items ?? []).map((item) => (
             <article key={item.id} className="api-setting-row">
               <ShieldCheck size={14} />

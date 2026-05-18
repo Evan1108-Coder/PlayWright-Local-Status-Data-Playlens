@@ -82,6 +82,7 @@ const tasks = await playlens.listTasks();
 const events = await playlens.listEvents({ kind: "network.response" });
 const issues = await playlens.listIssues();
 const metrics = await playlens.listMetrics();
+const raw = await playlens.getRawState();
 ```
 
 Useful routes:
@@ -96,7 +97,15 @@ GET /api/issues
 GET /api/metrics
 GET /api/settings
 POST /api/settings
+GET /api/project-scopes
+GET /api/audit
+GET /api/ai/messages
+GET /api/uploads
 GET /api/export?format=json|ndjson|markdown
+GET /api/raw/state
+GET /api/raw/sessions
+GET /api/raw/sessions/:sessionId/manifest
+GET /api/raw/sessions/:sessionId/events
 ```
 
 ## AI Features (Optional)

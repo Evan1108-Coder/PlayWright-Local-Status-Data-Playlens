@@ -140,6 +140,48 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/api/raw/state") {
+        const paths = getStoragePaths(storeOptions);
+        sendJson(response, 200, {
+          status: "ok",
+          state: await getHydratedState(storeOptions),
+          savedState: await loadOrCreateState(storeOptions),
+          storage: paths,
+          fileIndex: await createStorageFileIndex(paths)
+        });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/raw/files/index") {
+        sendJson(response, 200, { status: "ok", files: await createStorageFileIndex(getStoragePaths(storeOptions)) });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/raw/sessions") {
+        sendJson(response, 200, { status: "ok", sessions: await listRawSessions(getStoragePaths(storeOptions)) });
+        return;
+      }
+
+      const rawSessionManifestMatch = url.pathname.match(/^\/api\/raw\/sessions\/([^/]+)\/manifest$/);
+      if (request.method === "GET" && rawSessionManifestMatch) {
+        const manifest = await readRawSessionManifest(getStoragePaths(storeOptions), rawSessionManifestMatch[1]);
+        if (!manifest) {
+          sendError(response, 404, "session_manifest_not_found", `Raw session manifest not found: ${rawSessionManifestMatch[1]}`);
+          return;
+        }
+        sendJson(response, 200, { status: "ok", manifest });
+        return;
+      }
+
+      const rawSessionEventsMatch = url.pathname.match(/^\/api\/raw\/sessions\/([^/]+)\/events$/);
+      if (request.method === "GET" && rawSessionEventsMatch) {
+        sendJson(response, 200, {
+          status: "ok",
+          events: await readRawSessionEvents(getStoragePaths(storeOptions), rawSessionEventsMatch[1])
+        });
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/tasks") {
         const state = await getHydratedState(storeOptions);
         sendJson(response, 200, { status: "ok", tasks: state.tasks });
@@ -155,6 +197,13 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
           return;
         }
         sendJson(response, 200, { status: "ok", task });
+        return;
+      }
+
+      const sessionArtifactsMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/artifacts$/);
+      if (request.method === "GET" && sessionArtifactsMatch) {
+        const artifacts = await listArtifactsForSession(getStoragePaths(storeOptions), sessionArtifactsMatch[1]);
+        sendJson(response, 200, { status: "ok", artifacts });
         return;
       }
 
@@ -181,6 +230,15 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
         const state = await getHydratedState(storeOptions);
         const events = applyEventQuery(state.events.filter((event) => event.sessionId === sessionEventsMatch[1]), url);
         sendJson(response, 200, { status: "ok", events });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/artifacts") {
+        const sessionId = url.searchParams.get("sessionId");
+        const artifacts = sessionId
+          ? await listArtifactsForSession(getStoragePaths(storeOptions), sessionId)
+          : await listAllArtifacts(getStoragePaths(storeOptions));
+        sendJson(response, 200, { status: "ok", artifacts });
         return;
       }
 
@@ -217,6 +275,30 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
       if (request.method === "GET" && url.pathname === "/api/settings") {
         const state = await getHydratedState(storeOptions);
         sendJson(response, 200, { status: "ok", settingsGroups: state.settingsGroups });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/project-scopes") {
+        const state = await getHydratedState(storeOptions);
+        sendJson(response, 200, { status: "ok", projectScopes: state.projectScopes });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/audit") {
+        const state = await getHydratedState(storeOptions);
+        sendJson(response, 200, { status: "ok", auditLog: state.auditLog });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/ai/messages") {
+        const state = await getHydratedState(storeOptions);
+        sendJson(response, 200, { status: "ok", messages: state.aiAgent.messages, agent: state.aiAgent });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/uploads") {
+        const state = await getHydratedState(storeOptions);
+        sendJson(response, 200, { status: "ok", uploadedFiles: state.uploadedFiles });
         return;
       }
 
@@ -385,20 +467,32 @@ function createApiManifest(storageRoot: string) {
     },
     endpoints: [
       { method: "GET", path: "/api/health", description: "Backend health, version, and active storage root." },
+      { method: "GET", path: "/api/manifest", description: "Local API endpoint catalog, schema notes, and local-only status." },
       { method: "GET", path: "/api/state", description: "Complete hydrated PlayLens state for dashboards and custom tools." },
       { method: "GET", path: "/api/tasks", description: "Task list derived from current recording sessions." },
       { method: "GET", path: "/api/tasks/:taskId", description: "One task by id." },
       { method: "GET", path: "/api/sessions", description: "Stored session summaries." },
       { method: "GET", path: "/api/sessions/:sessionId", description: "One session with its events, issues, and metrics." },
       { method: "GET", path: "/api/sessions/:sessionId/events", description: "Events for one session. Supports kind and limit query params." },
+      { method: "GET", path: "/api/sessions/:sessionId/artifacts", description: "Artifact index for one session." },
       { method: "GET", path: "/api/events", description: "Events filtered by taskId, sessionId, kind, and limit." },
       { method: "GET", path: "/api/issues", description: "Issues filtered by taskId or sessionId." },
       { method: "GET", path: "/api/metrics", description: "CPU and memory samples filtered by taskId or sessionId." },
       { method: "GET", path: "/api/settings", description: "Durable settings groups used by UI, recorder, SDK, and API." },
       { method: "POST", path: "/api/settings", description: "Update one setting with { settingId | path, value }." },
+      { method: "GET", path: "/api/project-scopes", description: "Watched folders and project-scope metadata." },
+      { method: "GET", path: "/api/audit", description: "Audit records for user, system, and AI actions." },
+      { method: "GET", path: "/api/ai/messages", description: "AI agent state and stored AI conversation messages." },
+      { method: "GET", path: "/api/uploads", description: "Uploaded-file metadata and extraction status." },
       { method: "GET", path: "/api/search?q=<query>", description: "Search tasks, events, issues, settings, AI messages, and scopes." },
       { method: "GET", path: "/api/export?format=json|ndjson|markdown", description: "Export recorded data for code, reports, or archives." },
-      { method: "GET", path: "/api/artifact?sessionId=<id>&path=<file>", description: "Read a local artifact inside one session." }
+      { method: "GET", path: "/api/artifacts", description: "Artifact index across sessions, optionally filtered by sessionId." },
+      { method: "GET", path: "/api/artifact?sessionId=<id>&path=<file>", description: "Read a local artifact inside one session." },
+      { method: "GET", path: "/api/raw/state", description: "Hydrated state, saved app state, storage paths, and storage file index." },
+      { method: "GET", path: "/api/raw/files/index", description: "Raw PlayLens storage file index with sizes and modified times." },
+      { method: "GET", path: "/api/raw/sessions", description: "Raw session manifests plus event and artifact counts." },
+      { method: "GET", path: "/api/raw/sessions/:sessionId/manifest", description: "Raw session manifest exactly as stored." },
+      { method: "GET", path: "/api/raw/sessions/:sessionId/events", description: "Raw parsed event lines exactly as stored." }
     ],
     sdkExample: [
       "import { PlayLensClient } from './src/sdk/client';",
@@ -422,6 +516,105 @@ function applyEventQuery(events: PlayLensState["events"], url: URL): PlayLensSta
     (!severity || event.severity === severity)
   );
   return limit ? filtered.slice(-limit) : filtered;
+}
+
+async function listRawSessions(paths: ReturnType<typeof getStoragePaths>) {
+  const entries = await safeReadDir(paths.sessionsDir);
+  const sessions = await Promise.all(entries
+    .filter((entry) => entry.isDirectory())
+    .map(async (entry) => {
+      const sessionId = entry.name;
+      const manifest = await readRawSessionManifest(paths, sessionId);
+      const events = await readRawSessionEvents(paths, sessionId);
+      const artifacts = await listArtifactsForSession(paths, sessionId);
+      return manifest ? { sessionId, manifest, eventCount: events.length, artifactCount: artifacts.length } : undefined;
+    }));
+  return sessions.filter((session): session is NonNullable<typeof session> => Boolean(session));
+}
+
+async function readRawSessionManifest(paths: ReturnType<typeof getStoragePaths>, sessionId: string): Promise<Record<string, unknown> | null> {
+  const filePath = path.join(paths.sessionsDir, safePathPart(sessionId), "manifest.json");
+  return readJsonFile(filePath);
+}
+
+async function readRawSessionEvents(paths: ReturnType<typeof getStoragePaths>, sessionId: string): Promise<Record<string, unknown>[]> {
+  const filePath = path.join(paths.sessionsDir, safePathPart(sessionId), "events.ndjson");
+  const content = await readTextFile(filePath);
+  if (!content) return [];
+  return content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
+async function listAllArtifacts(paths: ReturnType<typeof getStoragePaths>) {
+  const entries = await safeReadDir(paths.sessionsDir);
+  const nested = await Promise.all(entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => listArtifactsForSession(paths, entry.name)));
+  return nested.flat();
+}
+
+async function listArtifactsForSession(paths: ReturnType<typeof getStoragePaths>, sessionId: string) {
+  const artifactsDir = path.join(paths.sessionsDir, safePathPart(sessionId), "artifacts");
+  return (await listFilesRecursive(artifactsDir)).map((file) => ({
+    sessionId,
+    ...file,
+    url: `/api/artifact?sessionId=${encodeURIComponent(sessionId)}&path=${encodeURIComponent(file.relativePath)}`
+  }));
+}
+
+async function createStorageFileIndex(paths: ReturnType<typeof getStoragePaths>) {
+  const roots = [
+    { kind: "state", root: paths.stateDir },
+    { kind: "sessions", root: paths.sessionsDir },
+    { kind: "exports", root: paths.exportsDir }
+  ];
+  const files = await Promise.all(roots.map(async ({ kind, root }) =>
+    (await listFilesRecursive(root)).map((file) => ({ kind, root, ...file }))
+  ));
+  return files.flat();
+}
+
+async function listFilesRecursive(root: string, current = root): Promise<Array<{ relativePath: string; absolutePath: string; sizeBytes: number; modifiedAt: string }>> {
+  const entries = await safeReadDir(current);
+  const files = await Promise.all(entries.map(async (entry) => {
+    const absolutePath = path.join(current, entry.name);
+    if (entry.isDirectory()) return listFilesRecursive(root, absolutePath);
+    if (!entry.isFile()) return [];
+    const stat = await fs.stat(absolutePath);
+    return [{
+      relativePath: path.relative(root, absolutePath),
+      absolutePath,
+      sizeBytes: stat.size,
+      modifiedAt: stat.mtime.toISOString()
+    }];
+  }));
+  return files.flat();
+}
+
+async function safeReadDir(dir: string) {
+  try {
+    return await fs.readdir(dir, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+async function readJsonFile(filePath: string): Promise<Record<string, unknown> | null> {
+  const content = await readTextFile(filePath);
+  return content ? JSON.parse(content) as Record<string, unknown> : null;
+}
+
+async function readTextFile(filePath: string): Promise<string | null> {
+  try {
+    return await fs.readFile(filePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
 }
 
 function addInitializedProjectScope(state: PlayLensState, folderPath: string): PlayLensState {
