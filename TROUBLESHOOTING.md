@@ -96,7 +96,7 @@ npm run test:recorder
 
 ### Settings changes not persisting after refresh
 
-**Note:** In the current version, settings are stored in React state and not persisted to the backend. Changes are lost on page refresh. This is a known limitation that will be addressed in a future release.
+**Note:** Settings are saved to the backend via `POST /api/state`. If changes are lost on refresh, ensure the backend server is running (`npm run api`) and that storage directories are writable. Check `npm run playlens -- doctor` for diagnostics.
 
 ## Getting Help
 

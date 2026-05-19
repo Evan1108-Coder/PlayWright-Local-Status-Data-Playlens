@@ -7,6 +7,9 @@ All notable changes to PlayLens will be documented in this file.
 ### Fixed
 - `playlens init` now detects likely npm scripts from script names and Playwright project context, not only command text.
 - Switching pages from the left navigation now closes the top More Actions menu.
+- Brand icon corrected from "D" to "P" in sidebar navigation.
+- Removed ~200 lines of dead CSS (unused shop/checkout mock, browser-frame, mini-layout, graph-row, request-row classes).
+- Troubleshooting guide updated: settings persistence now correctly documents backend API storage.
 
 ## [0.1.0] - 2026-05-14
 

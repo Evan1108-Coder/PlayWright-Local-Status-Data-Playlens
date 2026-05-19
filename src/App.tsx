@@ -184,7 +184,7 @@ export function App() {
     <div className="app-shell">
       <aside className="side-nav" aria-label="Primary navigation">
         <div className="brand-mark">
-          <div className="brand-icon">D</div>
+          <div className="brand-icon">P</div>
         </div>
 
         <nav className="nav-stack">
