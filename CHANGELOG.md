@@ -2,7 +2,15 @@
 
 All notable changes to PlayLens will be documented in this file.
 
-## [Unreleased]
+## [1.0.0] - 2026-05-19
+
+### Added
+- Desktop app for macOS (arm64 + x64) and Windows (x64) via Electron.
+- Splash screen with animated loader and PlayLens branding.
+- Automatic API + frontend server startup on app launch.
+- macOS native title bar integration (hiddenInset style).
+- Build system: esbuild server bundling + Vite frontend + electron-builder packaging.
+- DESKTOP-APP.md with installation, usage, and troubleshooting guide.
 
 ### Fixed
 - `playlens init` now detects likely npm scripts from script names and Playwright project context, not only command text.

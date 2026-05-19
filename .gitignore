@@ -1,5 +1,6 @@
 node_modules
 dist
+dist-electron
 .env
 .DS_Store
 .playlens/
@@ -9,3 +10,5 @@ coverage/
 *.log
 demo-projects/**/node_modules
 demo-projects/**/package-lock.json
+electron/.app-bundle
+electron/node_modules
