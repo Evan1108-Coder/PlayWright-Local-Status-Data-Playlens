@@ -88,11 +88,11 @@ npm run test:recorder
 2. Try a different format: `--format json`, `--format ndjson`, or `--format markdown`
 3. Run `npm run playlens -- doctor` to check system health
 
-### Dashboard minimum width issue
+### Dashboard feels cramped on smaller screens
 
-**Symptom:** Dashboard requires horizontal scrolling on smaller screens
+**Symptom:** Dense dashboard panels feel cramped or require extra scrolling on smaller screens
 
-**Note:** The dashboard has a minimum width of 1180px set on the `<body>` element. This is by design for the dense investigation layout. Use a browser window at least 1180px wide for the best experience.
+**Note:** The dashboard supports responsive layouts down to mobile-width screens, but the investigation view is still information-dense. Use a wider desktop window for the most comfortable timeline, replay, metrics, and graph layout.
 
 ### Settings changes not persisting after refresh
 
