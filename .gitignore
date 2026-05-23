@@ -1,6 +1,7 @@
 node_modules
 dist
 dist-electron
+.vite
 .env
 .DS_Store
 .playlens/

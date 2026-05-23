@@ -118,7 +118,7 @@ export async function ingestFile(file: IngestibleFileLike, options: FileIngestio
     const dataUrl = options.includeImagePreview === false ? undefined : await readImageDataUrl(file, base.mimeType, warnings);
     return {
       ...base,
-      summary: `${extension.toUpperCase()} image uploaded for visual context. MiniMax can inspect it when image access is enabled.`,
+      summary: `${extension.toUpperCase()} image uploaded for visual context. AI can inspect it when image access is enabled.`,
       dataUrl,
     };
   }
@@ -127,7 +127,7 @@ export async function ingestFile(file: IngestibleFileLike, options: FileIngestio
     const dataUrl = options.includeImagePreview === false ? undefined : await readBinaryDataUrl(file, base.mimeType, warnings);
     return {
       ...base,
-      summary: "PDF accepted. Text extraction should be handled by the server-side MiniMax ingestion pipeline or a PDF parser worker.",
+      summary: "PDF accepted. Text extraction should be handled by the server-side AI ingestion pipeline or a PDF parser worker.",
       dataUrl,
       warnings: [
         ...warnings,

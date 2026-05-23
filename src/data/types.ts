@@ -270,7 +270,7 @@ export interface AIAgentAction {
 
 export interface AIAgentState {
   enabled: boolean;
-  provider: "minimax" | "mock";
+  provider: "openai" | "anthropic" | "google" | "groq" | "minimax" | "moonshot" | "mock";
   model: string;
   mode: AgentMode;
   status: AgentRunStatus;

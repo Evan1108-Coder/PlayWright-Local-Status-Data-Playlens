@@ -75,7 +75,7 @@ export function SettingsPage({ state, highlightTargetId, aiAvailable, onUpdateSe
             <section className="settings-group ai-unavailable-note">
               <div className="settings-group-header">
                 <h3>AI features unavailable</h3>
-                <p>MiniMax API key is missing. AI settings can be edited and saved, but they only take effect after <code>MINIMAX_API_KEY</code> is set on the backend server and PlayLens is restarted.</p>
+                <p>AI API key is missing. AI settings can be edited and saved, but they only take effect after a provider API key (e.g. <code>OPENAI_API_KEY</code>) is set on the backend server and PlayLens is restarted.</p>
               </div>
             </section>
           ) : null}
@@ -147,7 +147,7 @@ function SettingRow({
         <strong>{item.label}</strong>
         <p>{item.description}</p>
         <small>{item.path}</small>
-        {pending ? <small className="setting-pending-label">Pending until MiniMax API key is configured</small> : null}
+        {pending ? <small className="setting-pending-label">Pending until AI API key is configured</small> : null}
       </div>
       {renderControl(item, onUpdate)}
     </div>

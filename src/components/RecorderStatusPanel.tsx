@@ -32,8 +32,8 @@ const recorderRows = [
   },
   {
     icon: Bot,
-    title: "MiniMax agent adapter",
-    detail: "AI stays unavailable until MINIMAX_API_KEY is configured on the backend server; no-key mode never fakes chat responses.",
+    title: "AI agent adapter",
+    detail: "AI stays unavailable until a provider API key is configured on the backend server; no-key mode never fakes chat responses.",
     status: "ready"
   }
 ];

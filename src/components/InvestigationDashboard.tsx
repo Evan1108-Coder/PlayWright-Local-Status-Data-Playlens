@@ -411,12 +411,12 @@ function AICompactPanel({ state, issue, aiAvailable }: { state: PlayLensState; i
       {tab === "AI Chat" ? (
         <>
           <div className="ai-prompt-stack">
-            <p>{aiEnabled ? "Ask about this session..." : "AI is unavailable until a MiniMax API key is configured."}</p>
+            <p>{aiEnabled ? "Ask about this session..." : "AI is unavailable until an API key is configured."}</p>
             {prompts.map((item) => <button key={item} disabled={!aiEnabled} onClick={() => setPrompt(item)}>{item}</button>)}
           </div>
           <div className={`ai-chat-input compact-input ${!aiEnabled ? "ai-disabled-input" : ""}`}>
-            <input value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={aiEnabled ? "Ask about this session..." : "MiniMax API key missing"} />
-            <button disabled={!aiEnabled} title={aiEnabled ? "Ask AI" : "MiniMax API key missing"}><Send size={14} /></button>
+            <input value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={aiEnabled ? "Ask about this session..." : "AI API key missing"} />
+            <button disabled={!aiEnabled} title={aiEnabled ? "Ask AI" : "AI API key missing"}><Send size={14} /></button>
           </div>
         </>
       ) : null}
@@ -431,7 +431,7 @@ function AICompactPanel({ state, issue, aiAvailable }: { state: PlayLensState; i
         <div className="compact-panel-body">
           <span>CLI supervisor: active</span>
           <span>Runtime hook: active</span>
-          <span>MiniMax: {aiAvailable ? "configured" : "missing key"}</span>
+          <span>AI Provider: {aiAvailable ? "configured" : "missing key"}</span>
         </div>
       ) : null}
     </section>

@@ -5,7 +5,7 @@ const REQUIRED_GROUPS = [
   ["dashboard", "Dashboard", "Panel sizes, visible tabs, default views, graph density, and highlight duration."],
   ["local-api", "Local API", "Local-only API, SDK access, endpoint exposure, CORS, exports, and integration safeguards."],
   ["data-history", "Data & History", "Retention, cleanup, exports, session history, artifacts, and reset controls."],
-  ["ai-file-uploads", "AI File Uploads", "Allowed files, upload limits, PDF extraction, and MiniMax file reading."],
+  ["ai-file-uploads", "AI File Uploads", "Allowed files, upload limits, PDF extraction, and AI provider file reading."],
   ["integrations", "Integrations", "Playwright reporter, CLI supervisor, shell hook, VS Code, CI, plugins, and webhooks."],
   ["system", "System", "Daemon status, ports, diagnostics, update channel, CPU and memory overhead."],
   ["advanced", "Advanced", "Raw config, analyzer toggles, schema version, debug mode, and experiments."],

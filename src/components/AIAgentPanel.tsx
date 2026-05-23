@@ -14,7 +14,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { createMiniMaxAdapter, MiniMaxUnavailableError, type MiniMaxContextSource, type MiniMaxMessage } from "../agent/minimaxAdapter";
+import { createAIAdapter, AIUnavailableError, type AIContextSource, type AIMessage as AdapterAIMessage } from "../agent/aiAdapter";
 import {
   ingestFile,
   SUPPORTED_UPLOAD_EXTENSIONS,
@@ -75,7 +75,7 @@ export interface AIAgentPanelProps {
   permissions?: AgentPermission[];
   activitySteps?: AgentActivityStep[];
   uploadedFiles?: IngestedFile[];
-  contextSources?: MiniMaxContextSource[];
+  contextSources?: AIContextSource[];
   sampleMessage?: string;
   onModeChange?: (mode: AgentMode) => void;
   onPause?: () => void;
@@ -212,15 +212,15 @@ export function AIAgentPanel({
   const [isThinking, setIsThinking] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const adapter = useMemo(() => createMiniMaxAdapter(), []);
+  const adapter = useMemo(() => createAIAdapter(), []);
   const activeStatus = localStatus;
   const aiAvailable = adapter.configured;
   const unavailableMessage = [
     "## AI Unavailable",
     "",
-    "MiniMax API key is not configured, so AI chat, file context, and agent actions are disabled.",
+    "No AI provider API key is configured, so AI chat, file context, and agent actions are disabled.",
     "",
-    "Settings can still be edited and saved. AI-related settings will only take effect after `MINIMAX_API_KEY` is set on the backend server and PlayLens is restarted.",
+    "Settings can still be edited and saved. AI-related settings will only take effect after an API key (e.g. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) is set on the backend server and PlayLens is restarted.",
   ].join("\n");
   const [assistantMessage, setAssistantMessage] = useState(
     aiAvailable ? latestStateMessage?.contentMarkdown ?? latestStateMessage?.content ?? sampleMessage : unavailableMessage,
@@ -263,7 +263,7 @@ export function AIAgentPanel({
       return;
     }
     if (!aiAvailable) {
-      setUploadError("MiniMax API key is missing. File upload context becomes available after the key is configured.");
+      setUploadError("AI API key is missing. File upload context becomes available after a provider key is configured.");
       return;
     }
 
@@ -291,7 +291,7 @@ export function AIAgentPanel({
     setLocalStatus("running");
     onAsk?.(prompt);
 
-    const messages: MiniMaxMessage[] = [
+    const messages: AdapterAIMessage[] = [
       {
         role: "system",
         content: "You are the PlayLens Browser Dashboard operator agent. Analyze evidence and suggest safe typed app actions.",
@@ -310,11 +310,11 @@ export function AIAgentPanel({
       setAssistantMessage([
         "## AI Request Failed",
         "",
-        error instanceof MiniMaxUnavailableError
-          ? "MiniMax API key is not configured. AI chat is disabled until the key is provided."
+        error instanceof AIUnavailableError
+          ? "No AI provider API key is configured. AI chat is disabled until a key is provided."
           : error instanceof Error
             ? error.message
-            : "Unknown MiniMax request failure.",
+            : "Unknown AI request failure.",
       ].join("\n"));
     } finally {
       setIsThinking(false);
@@ -330,7 +330,7 @@ export function AIAgentPanel({
           </div>
           <div>
             <h2 style={styles.title}>AI Operator</h2>
-            <p style={styles.subtitle}>{aiAvailable ? "MiniMax API key detected" : "MiniMax API key missing · AI disabled"}</p>
+            <p style={styles.subtitle}>{aiAvailable ? "AI provider configured" : "AI API key missing · AI disabled"}</p>
           </div>
         </div>
         <span style={{ ...styles.statusPill, ...(aiAvailable ? statusStyle(activeStatus) : styles.unavailablePill) }}>
@@ -342,7 +342,7 @@ export function AIAgentPanel({
         <div style={styles.unavailableBanner}>
           <KeyRound size={16} />
           <div>
-            <strong>MiniMax API key required</strong>
+            <strong>AI API key required</strong>
             <p>AI chat, uploads, and agent actions are disabled until a key is provided. Settings can be changed and saved, but AI-related changes remain pending.</p>
           </div>
         </div>
@@ -437,7 +437,7 @@ export function AIAgentPanel({
           rows={3}
           style={styles.textarea}
           aria-label="Message AI operator"
-          placeholder={aiAvailable ? "Ask the AI operator about this session..." : "MiniMax API key missing. You can type here, but the agent cannot respond until the key is configured."}
+          placeholder={aiAvailable ? "Ask the AI operator about this session..." : "AI API key missing. You can type here, but the agent cannot respond until a key is configured."}
         />
         <button type="button" onClick={askAgent} style={{ ...styles.askButton, ...(!aiAvailable ? styles.disabledButton : undefined) }} disabled={isThinking}>
           {isThinking ? <Loader2 size={15} /> : <SlidersHorizontal size={15} />}

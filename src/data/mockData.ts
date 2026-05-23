@@ -549,13 +549,13 @@ export const mockSettingsGroups: SettingGroup[] = [
   {
     id: "ai-agent",
     label: "AI Agent",
-    description: "MiniMax-backed operator controls, permissions, and memory. These settings only take effect when an API key is configured.",
+    description: "AI operator controls, permissions, and memory. These settings only take effect when a provider API key is configured.",
     items: [
       {
         id: "setting-ai-mode",
         path: "ai.mode",
         label: "Agent permission mode",
-        description: "Controls whether the AI can only read, ask first, use trusted actions, or fully operate PlayLens after MiniMax is configured.",
+        description: "Controls whether the AI can only read, ask first, use trusted actions, or fully operate PlayLens after AI is configured.",
         value: "ask-before-acting",
         defaultValue: "ask-before-acting",
         control: "select",
@@ -565,13 +565,13 @@ export const mockSettingsGroups: SettingGroup[] = [
           { label: "Trusted Actions", value: "trusted-actions" },
           { label: "Full Operator", value: "full-operator" },
         ],
-        keywords: ["ai", "agent", "permission", "operator", "minimax"],
+        keywords: ["ai", "agent", "permission", "operator"],
       },
       {
         id: "setting-ai-save-history",
         path: "ai.saveChatHistory",
         label: "Save AI chat history",
-        description: "Stores AI conversations so they can be searched, exported, and audited after MiniMax is configured.",
+        description: "Stores AI conversations so they can be searched, exported, and audited after AI is configured.",
         value: true,
         defaultValue: true,
         control: "toggle",
@@ -600,8 +600,8 @@ export const mockSettingsGroups: SettingGroup[] = [
 
 export const mockAIAgent: AIAgentState = {
   enabled: true,
-  provider: "minimax",
-  model: "minimax-text-01",
+  provider: "openai",
+  model: "gpt-4o",
   mode: "ask-before-acting",
   status: "running",
   currentTask: "Analyzing Checkout Flow Failure",

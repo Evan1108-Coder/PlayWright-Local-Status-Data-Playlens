@@ -343,22 +343,52 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
       }
 
       if (request.method === "POST" && url.pathname === "/api/ai/complete") {
-        const apiKey = process.env.MINIMAX_API_KEY?.trim();
-        if (!apiKey) {
-          sendError(response, 503, "ai_unavailable", "MiniMax API key is not configured on the server. Set MINIMAX_API_KEY to enable AI.");
+        const body = await readJsonBody<{ model?: string; provider?: string; messages: Array<{ role: string; content: string }>; temperature?: number; maxTokens?: number }>(request);
+        const resolved = resolveAIProvider(body.model, body.provider);
+        if (!resolved) {
+          sendError(response, 503, "ai_unavailable", "No AI provider API key is configured. Set an API key (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.) to enable AI.");
           return;
         }
-        const body = await readJsonBody<{ messages: Array<{ role: string; content: string }>; temperature?: number; maxTokens?: number }>(request);
-        const model = process.env.MINIMAX_MODEL ?? "minimax-text-01";
-        const baseUrl = (process.env.MINIMAX_BASE_URL ?? "https://api.minimax.io/v1").replace(/\/$/, "");
-        const upstream = await fetch(`${baseUrl}/chat/completions`, {
+
+        if (resolved.provider === "anthropic") {
+          const upstream = await fetch(`${resolved.baseUrl}/messages`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": resolved.apiKey,
+              "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify({
+              model: resolved.model,
+              messages: body.messages.filter((m) => m.role !== "system"),
+              system: body.messages.find((m) => m.role === "system")?.content,
+              temperature: body.temperature ?? 0.2,
+              max_tokens: body.maxTokens ?? 1200,
+            }),
+          });
+          if (!upstream.ok) {
+            const detail = await upstream.text().catch(() => "");
+            sendError(response, upstream.status, "ai_error", `Anthropic: ${upstream.status}${detail ? ` - ${detail.slice(0, 240)}` : ""}`);
+            return;
+          }
+          const anthropicJson = await upstream.json() as { id?: string; model?: string; content?: Array<{ text?: string }> };
+          const oaiResponse = {
+            id: anthropicJson.id ?? `ai-${Date.now().toString(36)}`,
+            model: anthropicJson.model ?? resolved.model,
+            choices: [{ message: { content: anthropicJson.content?.[0]?.text ?? "" } }],
+          };
+          sendJson(response, 200, oaiResponse);
+          return;
+        }
+
+        const upstream = await fetch(`${resolved.baseUrl}/chat/completions`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({ model, messages: body.messages, temperature: body.temperature ?? 0.2, max_tokens: body.maxTokens ?? 1200 }),
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${resolved.apiKey}` },
+          body: JSON.stringify({ model: resolved.model, messages: body.messages, temperature: body.temperature ?? 0.2, max_tokens: body.maxTokens ?? 1200 }),
         });
         if (!upstream.ok) {
           const detail = await upstream.text().catch(() => "");
-          sendError(response, upstream.status, "ai_error", `MiniMax: ${upstream.status}${detail ? ` - ${detail.slice(0, 240)}` : ""}`);
+          sendError(response, upstream.status, "ai_error", `${resolved.provider}: ${upstream.status}${detail ? ` - ${detail.slice(0, 240)}` : ""}`);
           return;
         }
         sendText(response, 200, await upstream.text(), "application/json; charset=utf-8");
@@ -366,7 +396,14 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
       }
 
       if (request.method === "GET" && url.pathname === "/api/ai/status") {
-        sendJson(response, 200, { configured: Boolean(process.env.MINIMAX_API_KEY?.trim()), model: process.env.MINIMAX_MODEL ?? "minimax-text-01" });
+        const status = getAIStatus();
+        sendJson(response, 200, status);
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/ai/models") {
+        const available = getAvailableModels();
+        sendJson(response, 200, { models: available });
         return;
       }
 
@@ -743,6 +780,143 @@ function contentTypeForArtifact(filePath: string): string {
 
 function safePathPart(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+// --- AI Provider Resolution ---
+
+interface ProviderConfig {
+  name: string;
+  envKey: string;
+  baseUrl: string;
+  models: Array<{ id: string; name: string }>;
+}
+
+const AI_PROVIDERS: Record<string, ProviderConfig> = {
+  openai: {
+    name: "OpenAI",
+    envKey: "OPENAI_API_KEY",
+    baseUrl: "https://api.openai.com/v1",
+    models: [
+      { id: "gpt-5.4-pro", name: "GPT-5.4 Pro" },
+      { id: "gpt-5.4-mini", name: "GPT-5.4 Mini" },
+      { id: "gpt-4o", name: "GPT-4o" },
+      { id: "gpt-4o-mini", name: "GPT-4o Mini" },
+    ],
+  },
+  anthropic: {
+    name: "Anthropic",
+    envKey: "ANTHROPIC_API_KEY",
+    baseUrl: "https://api.anthropic.com/v1",
+    models: [
+      { id: "claude-opus-4-6", name: "Claude Opus 4.6" },
+      { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
+      { id: "claude-haiku-4-5", name: "Claude Haiku 4.5" },
+      { id: "claude-3.5-sonnet", name: "Claude 3.5 Sonnet" },
+    ],
+  },
+  google: {
+    name: "Google",
+    envKey: "GOOGLE_API_KEY",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    models: [
+      { id: "gemini-3.1-pro", name: "Gemini 3.1 Pro" },
+      { id: "gemini-3-flash", name: "Gemini 3 Flash" },
+      { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite" },
+    ],
+  },
+  groq: {
+    name: "Groq",
+    envKey: "GROQ_API_KEY",
+    baseUrl: "https://api.groq.com/openai/v1",
+    models: [
+      { id: "llama-4-maverick", name: "Llama 4 Maverick" },
+      { id: "llama-4-scout", name: "Llama 4 Scout" },
+      { id: "llama-3.3-70b", name: "Llama 3.3 70B" },
+    ],
+  },
+  minimax: {
+    name: "MiniMax",
+    envKey: "MINIMAX_API_KEY",
+    baseUrl: "https://api.minimax.io/v1",
+    models: [
+      { id: "minimax-m2.7", name: "MiniMax M2.7" },
+      { id: "minimax-m2.5-lightning", name: "MiniMax M2.5 Lightning" },
+    ],
+  },
+  moonshot: {
+    name: "Moonshot",
+    envKey: "MOONSHOT_API_KEY",
+    baseUrl: "https://api.moonshot.cn/v1",
+    models: [
+      { id: "kimi-latest", name: "Kimi Latest" },
+      { id: "kimi-k2-thinking", name: "Kimi K2 Thinking" },
+      { id: "kimi-k2-turbo-preview", name: "Kimi K2 Turbo" },
+      { id: "kimi-k2.5-vision", name: "Kimi K2.5 Vision" },
+      { id: "moonshot-v1-128k", name: "Moonshot V1 128K" },
+    ],
+  },
+};
+
+function detectProviderFromModel(modelId: string): string {
+  if (modelId.startsWith("gpt-")) return "openai";
+  if (modelId.startsWith("claude-")) return "anthropic";
+  if (modelId.startsWith("gemini-")) return "google";
+  if (modelId.startsWith("llama-")) return "groq";
+  if (modelId.startsWith("minimax-")) return "minimax";
+  if (modelId.startsWith("kimi-") || modelId.startsWith("moonshot-")) return "moonshot";
+  return "openai";
+}
+
+function resolveAIProvider(modelId?: string, providerHint?: string): { provider: string; model: string; apiKey: string; baseUrl: string } | null {
+  const model = modelId ?? process.env.AI_MODEL ?? process.env.MINIMAX_MODEL ?? "gpt-4o";
+  const providerName = providerHint ?? detectProviderFromModel(model);
+  const config = AI_PROVIDERS[providerName];
+  if (!config) return null;
+
+  const apiKey = process.env[config.envKey]?.trim();
+  if (!apiKey) {
+    // Fallback: try MINIMAX_API_KEY for backward compatibility
+    if (providerName === "minimax") {
+      const legacyKey = process.env.MINIMAX_API_KEY?.trim();
+      if (legacyKey) {
+        const baseUrl = (process.env.MINIMAX_BASE_URL ?? config.baseUrl).replace(/\/$/, "");
+        return { provider: providerName, model, apiKey: legacyKey, baseUrl };
+      }
+    }
+    return null;
+  }
+
+  const baseUrl = config.baseUrl.replace(/\/$/, "");
+  return { provider: providerName, model, apiKey, baseUrl };
+}
+
+function getAIStatus(): { configured: boolean; model: string; provider: string; availableProviders: string[] } {
+  const availableProviders: string[] = [];
+  for (const [name, config] of Object.entries(AI_PROVIDERS)) {
+    if (process.env[config.envKey]?.trim()) {
+      availableProviders.push(name);
+    }
+  }
+  const model = process.env.AI_MODEL ?? process.env.MINIMAX_MODEL ?? "gpt-4o";
+  const provider = detectProviderFromModel(model);
+  return {
+    configured: availableProviders.length > 0,
+    model,
+    provider,
+    availableProviders,
+  };
+}
+
+function getAvailableModels(): Array<{ id: string; name: string; provider: string }> {
+  const models: Array<{ id: string; name: string; provider: string }> = [];
+  for (const [providerName, config] of Object.entries(AI_PROVIDERS)) {
+    if (process.env[config.envKey]?.trim()) {
+      for (const m of config.models) {
+        models.push({ ...m, provider: providerName });
+      }
+    }
+  }
+  return models;
 }
 
 const isDirectRun = process.argv[1] === fileURLToPath(import.meta.url);

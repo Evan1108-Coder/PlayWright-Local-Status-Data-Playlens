@@ -23,7 +23,7 @@ import { TaskRail } from "./components/TaskRail";
 import { DataAccessPage } from "./components/DataAccessPage";
 import { LocalApiPage } from "./components/LocalApiPage";
 import { createEmptyAppState, searchApp, appActions } from "./state/appState";
-import { hasMiniMaxApiKey } from "./agent/minimaxAdapter";
+import { hasAIApiKey } from "./agent/aiAdapter";
 import { addWatchedFolder, clearAppMemory, getExportUrl, getStoredState, saveStoredState } from "./lib/apiClient";
 import type { Task, TaskId } from "./data/types";
 
@@ -116,7 +116,7 @@ export function App() {
   const visibleTasks = hasRealTasks ? visibleRealTasks : [blankTask];
   const hiddenTaskCount = Math.max(0, state.tasks.length - visibleRealTasks.length);
   const selectedTask = state.tasks.find((task) => task.id === state.selectedTaskId) ?? state.tasks[0] ?? blankTask;
-  const aiAvailable = useMemo(() => hasMiniMaxApiKey(), []);
+  const aiAvailable = useMemo(() => hasAIApiKey(), []);
   const aiUsable = aiAvailable && hasRealTasks;
   const session = state.sessions.find((s) => s.taskId === selectedTask?.id);
   const taskIssueCount = state.issues.filter((i) => i.taskId === selectedTask?.id).length;
