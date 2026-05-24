@@ -90,7 +90,7 @@ Created controlled smoke folders:
   - Contains `.playlens/project.json` after init.
   - Runs a normal Node script with no Playwright import.
 
-- `/Users/EvanLu/Documents/Codex/2026-05-13/do-you-know-playwright/actual-playwright-accuracy-workspace`
+- `./actual-playwright-accuracy-workspace`
   - Uses real `@playwright/test` and real Chromium.
   - Records a checkout payment failure with `POST /api/payment`, a real `500` response, console errors, DOM before/after text, and real before/after PNG screenshots.
   - The test now passes after proving the visible payment error, so it behaves like a normal project that intentionally validates an error path.
