@@ -33,7 +33,7 @@ export function createPlayLensServer(options: PlayLensServerOptions = {}): http.
 
   return http.createServer(async (request, response) => {
     try {
-      setCorsHeaders(response);
+      setCorsHeaders(response, request);
       if (request.method === "OPTIONS") {
         response.writeHead(204);
         response.end();
@@ -725,8 +725,10 @@ function sendError(response: ServerResponse, statusCode: number, code: string, m
   sendJson(response, statusCode, body);
 }
 
-function setCorsHeaders(response: ServerResponse): void {
-  response.setHeader("Access-Control-Allow-Origin", "*");
+function setCorsHeaders(response: ServerResponse, request?: IncomingMessage): void {
+  const origin = request?.headers.origin || "";
+  const allowed = origin.startsWith("http://localhost") || origin.startsWith("http://127.0.0.1");
+  response.setHeader("Access-Control-Allow-Origin", allowed ? origin : "http://localhost");
   response.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   response.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
