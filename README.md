@@ -20,6 +20,12 @@ PlayLens helps developers see what happened during browser automation without di
 
 PlayLens is a local-first observability dashboard for Playwright runs. It captures tasks, browser/runtime events, terminal output, network-style evidence, settings, exports, and AI-agent-ready context so developers can inspect and share automation sessions.
 
+## Architecture
+
+![Architecture](docs/images/architecture.jpg)
+
+*Playwright runs feed through a recorder and supervisor into the local dashboard for inspection and AI-powered analysis.*
+
 ## Features
 
 - **Investigation Dashboard** — Timeline, real captured evidence panes, metric charts, issue focus, network waterfall, graph/table causal views, and terminal output
