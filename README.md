@@ -1,5 +1,23 @@
 # PlayLens
 
+> Status: beta. PlayLens is designed for local debugging and inspection of Playwright runs; integrations may need adjustment for different test setups.
+
+PlayLens helps developers see what happened during browser automation without digging through scattered terminal logs, screenshots, traces, and agent notes.
+
+## Why Use PlayLens?
+
+- Keeps Playwright run evidence in a local dashboard.
+- Captures browser events, task state, terminal output, and debugging context.
+- Exports AI-agent-ready context for follow-up investigation.
+- Works as an inspection layer around local automation sessions.
+
+## Current Limitations
+
+- It is focused on Playwright workflows, not every test runner.
+- Local setup is required before it can collect useful run data.
+- Network-style evidence is observability context, not a replacement for full packet capture.
+
+
 PlayLens is a local-first observability dashboard for Playwright runs. It captures tasks, browser/runtime events, terminal output, network-style evidence, settings, exports, and AI-agent-ready context so developers can inspect and share automation sessions.
 
 ## Features
