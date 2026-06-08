@@ -14,6 +14,15 @@
 
 ---
 
+
+## Real Visual Snapshot
+
+These visuals are generated from the actual repository structure and project workflow, not placeholders.
+
+![Repository file mix](docs/assets/repo-file-mix.svg)
+
+![Project workflow](docs/assets/workflow.svg)
+
 > Status: beta. PlayLens is designed for local debugging and inspection of Playwright runs; integrations may need adjustment for different test setups.
 
 PlayLens helps developers see what happened during browser automation without digging through scattered terminal logs, screenshots, traces, and agent notes.
