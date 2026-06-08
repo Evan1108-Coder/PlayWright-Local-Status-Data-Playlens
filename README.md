@@ -2,13 +2,13 @@
 
 > Local-first observability dashboard for Playwright sessions, browser events, terminal output, and AI-ready debugging context.
 
-![Status](https://img.shields.io/badge/status-beta-6b7280) ![License](https://img.shields.io/github/license/Evan1108-Coder/PlayWright-Local-Status-Data-Playlens) ![CI](https://img.shields.io/github/actions/workflow/status/Evan1108-Coder/PlayWright-Local-Status-Data-Playlens/ci.yml?branch=main&label=CI)
+![Status](https://img.shields.io/badge/status-beta-6b7280) ![License](https://img.shields.io/github/license/Evan1108-Coder/PlayWright-Local-Status-Data-Playlens)
 
 **TypeScript dashboard • Playwright evidence • local debugging**
 
 ## At a Glance
 
-- Real project documentation now includes security, contribution, changelog, CI, and issue/PR workflows.
+- Real project documentation now includes security guidance, contribution notes, issue/PR templates, and real visual snapshots.
 - Maintenance snapshot: see [docs/project-snapshot.md](docs/project-snapshot.md) for a generated file-mix chart and repository checklist.
 - Public repo: https://github.com/Evan1108-Coder/PlayWright-Local-Status-Data-Playlens
 

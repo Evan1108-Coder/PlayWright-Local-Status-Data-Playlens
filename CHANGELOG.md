@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to PlayLens will be documented in this file.
+All notable changes to PlayLens will be documented in this file. PlayLens keeps a changelog because it is a versioned developer tool with app releases and user-facing behavior.
 
 ## [1.0.0] - 2026-05-19
 
