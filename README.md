@@ -1,5 +1,19 @@
 # PlayLens
 
+> Local-first observability dashboard for Playwright sessions, browser events, terminal output, and AI-ready debugging context.
+
+![Status](https://img.shields.io/badge/status-beta-6b7280) ![License](https://img.shields.io/github/license/Evan1108-Coder/PlayWright-Local-Status-Data-Playlens) ![CI](https://img.shields.io/github/actions/workflow/status/Evan1108-Coder/PlayWright-Local-Status-Data-Playlens/ci.yml?branch=main&label=CI)
+
+**TypeScript dashboard • Playwright evidence • local debugging**
+
+## At a Glance
+
+- Real project documentation now includes security, contribution, changelog, CI, and issue/PR workflows.
+- Maintenance snapshot: see [docs/project-snapshot.md](docs/project-snapshot.md) for a generated file-mix chart and repository checklist.
+- Public repo: https://github.com/Evan1108-Coder/PlayWright-Local-Status-Data-Playlens
+
+---
+
 > Status: beta. PlayLens is designed for local debugging and inspection of Playwright runs; integrations may need adjustment for different test setups.
 
 PlayLens helps developers see what happened during browser automation without digging through scattered terminal logs, screenshots, traces, and agent notes.
