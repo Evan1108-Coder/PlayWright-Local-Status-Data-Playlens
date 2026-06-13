@@ -30,11 +30,16 @@ export interface AIModel {
 
 export const SUPPORTED_MODELS: AIModel[] = [
   // OpenAI
+  { id: "gpt-5.5-pro", name: "GPT-5.5 Pro", provider: "openai" },
+  { id: "gpt-5.5", name: "GPT-5.5", provider: "openai" },
+  { id: "gpt-5.5-mini", name: "GPT-5.5 Mini", provider: "openai" },
   { id: "gpt-5.4-pro", name: "GPT-5.4 Pro", provider: "openai" },
   { id: "gpt-5.4-mini", name: "GPT-5.4 Mini", provider: "openai" },
   { id: "gpt-4o", name: "GPT-4o", provider: "openai" },
   { id: "gpt-4o-mini", name: "GPT-4o Mini", provider: "openai" },
   // Anthropic
+  { id: "claude-opus-4-7", name: "Claude Opus 4.7", provider: "anthropic" },
+  { id: "claude-sonnet-4-7", name: "Claude Sonnet 4.7", provider: "anthropic" },
   { id: "claude-opus-4-6", name: "Claude Opus 4.6", provider: "anthropic" },
   { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", provider: "anthropic" },
   { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", provider: "anthropic" },
@@ -48,8 +53,9 @@ export const SUPPORTED_MODELS: AIModel[] = [
   { id: "llama-4-scout", name: "Llama 4 Scout", provider: "groq" },
   { id: "llama-3.3-70b", name: "Llama 3.3 70B", provider: "groq" },
   // MiniMax
+  { id: "minimax-m3", name: "MiniMax M3", provider: "minimax" },
+  { id: "minimax-m2.5", name: "MiniMax M2.5", provider: "minimax" },
   { id: "minimax-m2.7", name: "MiniMax M2.7", provider: "minimax" },
-  { id: "minimax-m2.5-lightning", name: "MiniMax M2.5 Lightning", provider: "minimax" },
   // Moonshot/Kimi
   { id: "kimi-latest", name: "Kimi Latest", provider: "moonshot" },
   { id: "kimi-k2-thinking", name: "Kimi K2 Thinking", provider: "moonshot" },

@@ -799,6 +799,9 @@ const AI_PROVIDERS: Record<string, ProviderConfig> = {
     envKey: "OPENAI_API_KEY",
     baseUrl: "https://api.openai.com/v1",
     models: [
+      { id: "gpt-5.5-pro", name: "GPT-5.5 Pro" },
+      { id: "gpt-5.5", name: "GPT-5.5" },
+      { id: "gpt-5.5-mini", name: "GPT-5.5 Mini" },
       { id: "gpt-5.4-pro", name: "GPT-5.4 Pro" },
       { id: "gpt-5.4-mini", name: "GPT-5.4 Mini" },
       { id: "gpt-4o", name: "GPT-4o" },
@@ -810,6 +813,8 @@ const AI_PROVIDERS: Record<string, ProviderConfig> = {
     envKey: "ANTHROPIC_API_KEY",
     baseUrl: "https://api.anthropic.com/v1",
     models: [
+      { id: "claude-opus-4-7", name: "Claude Opus 4.7" },
+      { id: "claude-sonnet-4-7", name: "Claude Sonnet 4.7" },
       { id: "claude-opus-4-6", name: "Claude Opus 4.6" },
       { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
       { id: "claude-haiku-4-5", name: "Claude Haiku 4.5" },
@@ -841,8 +846,9 @@ const AI_PROVIDERS: Record<string, ProviderConfig> = {
     envKey: "MINIMAX_API_KEY",
     baseUrl: "https://api.minimax.io/v1",
     models: [
+      { id: "minimax-m3", name: "MiniMax M3" },
+      { id: "minimax-m2.5", name: "MiniMax M2.5" },
       { id: "minimax-m2.7", name: "MiniMax M2.7" },
-      { id: "minimax-m2.5-lightning", name: "MiniMax M2.5 Lightning" },
     ],
   },
   moonshot: {

@@ -214,7 +214,7 @@ npm run build        # Production build
 | TypeScript | 5.6 | Type safety |
 | Node.js | 22+ | Backend runtime |
 | Lucide React | 0.468 | Icon library |
-| MiniMax API | minimax-text-01 | AI features (optional) |
+| Multi-provider AI | gpt-5.5-pro, claude-opus-4-7, minimax-m3, and more | AI features (optional) |
 
 ## Project Structure
 
